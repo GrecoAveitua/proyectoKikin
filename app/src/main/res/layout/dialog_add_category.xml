@@ -59,13 +59,6 @@
             android:layout_height="wrap_content"
             android:text="Kumite (Combate)" />
 
-        <RadioButton
-            android:id="@+id/rb_both"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Ambos"
-            android:checked="true" />
-
     </RadioGroup>
 
     <TextView

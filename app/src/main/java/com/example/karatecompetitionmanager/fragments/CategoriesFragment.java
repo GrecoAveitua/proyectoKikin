@@ -69,16 +69,36 @@ public class CategoriesFragment extends Fragment {
         EditText etMaxAge = dialogView.findViewById(R.id.et_max_age);
         RadioGroup rgType = dialogView.findViewById(R.id.rg_category_type);
 
-        String[] belts = {"Blanco", "Amarillo", "Naranja", "Verde", "Azul", "Marron", "Negro"};
-        String[] judes = {"3", "5", "7"};
-        ArrayAdapter<String> beltAdapter = new ArrayAdapter<>(getContext(),
-                android.R.layout.simple_spinner_item, belts);
+        String[] belts = {
+                "Blanco",
+                "Amarillo",
+                "Naranja",
+                "Verde",
+                "Azul",
+                "Marrón",
+                "Negro"
+        };
+
+        ArrayAdapter<String> beltAdapter = new ArrayAdapter<>(
+                requireContext(),
+                android.R.layout.simple_spinner_item,
+                belts
+        );
         beltAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spjUDGE.setAdapter(beltAdapter);
-        ArrayAdapter<String> judgeAdapter = new ArrayAdapter<>(getContext(),
-                android.R.layout.simple_spinner_item, judes);
-        beltAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spjUDGE.setAdapter(judgeAdapter);
+
+        spBelt.setAdapter(beltAdapter);
+
+        String[] judges = {"1", "3", "5", "7"};
+
+        ArrayAdapter<String> judgesAdapter = new ArrayAdapter<>(
+                requireContext(),
+                android.R.layout.simple_spinner_item,
+                judges
+        );
+        judgesAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+
+        spjUDGE.setAdapter(judgesAdapter);
+
 
         new AlertDialog.Builder(getContext())
                 .setTitle("Crear Categoría")
@@ -107,8 +127,6 @@ public class CategoriesFragment extends Fragment {
                     int selectedId = rgType.getCheckedRadioButtonId();
                     RadioButton rbSelected = dialogView.findViewById(selectedId);
                     String type = rbSelected.getText().toString().toLowerCase();
-
-                    if (type.equals("ambos")) type = "both";
 
                     String folio = Category.generateFolio(belt, minAge, maxAge, type);
                     Category category = new Category(folio, belt, minAge, maxAge, type);
@@ -215,8 +233,6 @@ public class CategoriesFragment extends Fragment {
             rgType.check(R.id.rb_kata);
         } else if (category.getType().equals("kumite")) {
             rgType.check(R.id.rb_kumite);
-        } else {
-            rgType.check(R.id.rb_both);
         }
 
         AlertDialog editDialog = new AlertDialog.Builder(getContext())
