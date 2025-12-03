@@ -17,6 +17,7 @@ import com.google.android.material.navigation.NavigationView;
 import com.example.karatecompetitionmanager.fragments.CategoriesFragment;
 import com.example.karatecompetitionmanager.fragments.CompetitorsFragment;
 import com.example.karatecompetitionmanager.fragments.HistoryFragment;
+import com.example.karatecompetitionmanager.fragments.ManageCategoryCompetitorsFragment;
 import com.example.karatecompetitionmanager.fragments.StartCompetitionFragment;
 
 public class MainActivity extends AppCompatActivity
@@ -60,6 +61,8 @@ public class MainActivity extends AppCompatActivity
             fragment = new CompetitorsFragment();
         } else if (id == R.id.nav_categories) {
             fragment = new CategoriesFragment();
+        } else if (id == R.id.nav_manage_category_competitors) {
+            fragment = new ManageCategoryCompetitorsFragment();
         } else if (id == R.id.nav_start_competition) {
             fragment = new StartCompetitionFragment();
         } else if (id == R.id.nav_history) {

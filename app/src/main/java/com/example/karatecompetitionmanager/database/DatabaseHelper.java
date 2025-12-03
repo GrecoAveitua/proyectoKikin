@@ -16,7 +16,7 @@ import java.util.List;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "karate_competition.db";
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2; // ACTUALIZADO DE 1 A 2
 
     // Tabla Competidores
     private static final String TABLE_COMPETITORS = "competitors";
@@ -45,6 +45,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_COMP_FIRST = "first_place";
     private static final String COL_COMP_SECOND = "second_place";
     private static final String COL_COMP_THIRD = "third_place";
+
+    // NUEVA TABLA: Relación Categorías-Competidores
+    private static final String TABLE_CATEGORY_COMPETITORS = "category_competitors";
+    private static final String COL_CC_ID = "id";
+    private static final String COL_CC_CATEGORY_FOLIO = "category_folio";
+    private static final String COL_CC_COMPETITOR_FOLIO = "competitor_folio";
 
     public DatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
@@ -77,20 +83,42 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_COMP_SECOND + " TEXT, " +
                 COL_COMP_THIRD + " TEXT)";
 
+        // NUEVA TABLA
+        String createCategoryCompetitorsTable = "CREATE TABLE " + TABLE_CATEGORY_COMPETITORS + " (" +
+                COL_CC_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                COL_CC_CATEGORY_FOLIO + " TEXT NOT NULL, " +
+                COL_CC_COMPETITOR_FOLIO + " TEXT NOT NULL, " +
+                "FOREIGN KEY(" + COL_CC_CATEGORY_FOLIO + ") REFERENCES " +
+                TABLE_CATEGORIES + "(" + COL_CAT_FOLIO + ") ON DELETE CASCADE, " +
+                "FOREIGN KEY(" + COL_CC_COMPETITOR_FOLIO + ") REFERENCES " +
+                TABLE_COMPETITORS + "(" + COL_COMP_FOLIO + ") ON DELETE CASCADE, " +
+                "UNIQUE(" + COL_CC_CATEGORY_FOLIO + ", " + COL_CC_COMPETITOR_FOLIO + "))";
+
         db.execSQL(createCompetitorsTable);
         db.execSQL(createCategoriesTable);
         db.execSQL(createCompetitionsTable);
+        db.execSQL(createCategoryCompetitorsTable);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_COMPETITORS);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_CATEGORIES);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_COMPETITIONS);
-        onCreate(db);
+        if (oldVersion < 2) {
+            // Crear la nueva tabla de relaciones
+            String createCategoryCompetitorsTable = "CREATE TABLE " + TABLE_CATEGORY_COMPETITORS + " (" +
+                    COL_CC_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    COL_CC_CATEGORY_FOLIO + " TEXT NOT NULL, " +
+                    COL_CC_COMPETITOR_FOLIO + " TEXT NOT NULL, " +
+                    "FOREIGN KEY(" + COL_CC_CATEGORY_FOLIO + ") REFERENCES " +
+                    TABLE_CATEGORIES + "(" + COL_CAT_FOLIO + ") ON DELETE CASCADE, " +
+                    "FOREIGN KEY(" + COL_CC_COMPETITOR_FOLIO + ") REFERENCES " +
+                    TABLE_COMPETITORS + "(" + COL_COMP_FOLIO + ") ON DELETE CASCADE, " +
+                    "UNIQUE(" + COL_CC_CATEGORY_FOLIO + ", " + COL_CC_COMPETITOR_FOLIO + "))";
+            db.execSQL(createCategoryCompetitorsTable);
+        }
     }
 
-    // CRUD Competidores
+    // ==================== CRUD COMPETIDORES ====================
+
     public long insertCompetitor(Competitor competitor) {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
@@ -169,7 +197,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return competitors;
     }
 
-    // CRUD Categorías
+    // ==================== CRUD CATEGORÍAS ====================
+
     public long insertCategory(Category category) {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
@@ -240,7 +269,156 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return categories;
     }
 
-    // Métodos para Competencias
+    // ==================== NUEVOS MÉTODOS: COMPETIDORES EN CATEGORÍAS ====================
+
+    /**
+     * Añadir un competidor a una categoría
+     */
+    public long addCompetitorToCategory(String categoryFolio, String competitorFolio) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_CC_CATEGORY_FOLIO, categoryFolio);
+        values.put(COL_CC_COMPETITOR_FOLIO, competitorFolio);
+        return db.insert(TABLE_CATEGORY_COMPETITORS, null, values);
+    }
+
+    /**
+     * Eliminar un competidor de una categoría
+     */
+    public int removeCompetitorFromCategory(String categoryFolio, String competitorFolio) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        return db.delete(TABLE_CATEGORY_COMPETITORS,
+                COL_CC_CATEGORY_FOLIO + "=? AND " + COL_CC_COMPETITOR_FOLIO + "=?",
+                new String[]{categoryFolio, competitorFolio});
+    }
+
+    /**
+     * Obtener todos los competidores de una categoría
+     */
+    public List<Competitor> getCompetitorsByCategory(String categoryFolio) {
+        List<Competitor> competitors = new ArrayList<>();
+        String query = "SELECT c.* FROM " + TABLE_COMPETITORS + " c " +
+                "INNER JOIN " + TABLE_CATEGORY_COMPETITORS + " cc " +
+                "ON c." + COL_COMP_FOLIO + " = cc." + COL_CC_COMPETITOR_FOLIO + " " +
+                "WHERE cc." + COL_CC_CATEGORY_FOLIO + " = ? " +
+                "ORDER BY c." + COL_COMP_NAME;
+
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(query, new String[]{categoryFolio});
+
+        if (cursor.moveToFirst()) {
+            do {
+                Competitor competitor = new Competitor(
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_COMP_FOLIO)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_COMP_NAME)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_COMP_DOJO)),
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COL_COMP_AGE)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_COMP_BELT)),
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COL_COMP_KATA)) == 1,
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COL_COMP_KUMITE)) == 1
+                );
+                competitors.add(competitor);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return competitors;
+    }
+
+    /**
+     * Obtener todas las categorías de un competidor
+     */
+    public List<Category> getCategoriesByCompetitor(String competitorFolio) {
+        List<Category> categories = new ArrayList<>();
+        String query = "SELECT cat.* FROM " + TABLE_CATEGORIES + " cat " +
+                "INNER JOIN " + TABLE_CATEGORY_COMPETITORS + " cc " +
+                "ON cat." + COL_CAT_FOLIO + " = cc." + COL_CC_CATEGORY_FOLIO + " " +
+                "WHERE cc." + COL_CC_COMPETITOR_FOLIO + " = ? " +
+                "ORDER BY cat." + COL_CAT_BELT + ", cat." + COL_CAT_MIN_AGE;
+
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(query, new String[]{competitorFolio});
+
+        if (cursor.moveToFirst()) {
+            do {
+                Category category = new Category(
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_CAT_FOLIO)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_CAT_BELT)),
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COL_CAT_MIN_AGE)),
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COL_CAT_MAX_AGE)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_CAT_TYPE))
+                );
+                categories.add(category);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return categories;
+    }
+
+    /**
+     * Verificar si un competidor está en una categoría
+     */
+    public boolean isCompetitorInCategory(String categoryFolio, String competitorFolio) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.query(TABLE_CATEGORY_COMPETITORS, null,
+                COL_CC_CATEGORY_FOLIO + "=? AND " + COL_CC_COMPETITOR_FOLIO + "=?",
+                new String[]{categoryFolio, competitorFolio}, null, null, null);
+
+        boolean exists = cursor != null && cursor.getCount() > 0;
+        if (cursor != null) cursor.close();
+        return exists;
+    }
+
+    /**
+     * Obtener competidores elegibles para una categoría (que cumplan los requisitos)
+     */
+    public List<Competitor> getEligibleCompetitors(Category category) {
+        List<Competitor> competitors = new ArrayList<>();
+        String query = "SELECT * FROM " + TABLE_COMPETITORS + " " +
+                "WHERE " + COL_COMP_BELT + " = ? " +
+                "AND " + COL_COMP_AGE + " >= ? " +
+                "AND " + COL_COMP_AGE + " <= ? " +
+                "ORDER BY " + COL_COMP_NAME;
+
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(query, new String[]{
+                category.getBelt(),
+                String.valueOf(category.getMinAge()),
+                String.valueOf(category.getMaxAge())
+        });
+
+        if (cursor.moveToFirst()) {
+            do {
+                Competitor competitor = new Competitor(
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_COMP_FOLIO)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_COMP_NAME)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_COMP_DOJO)),
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COL_COMP_AGE)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_COMP_BELT)),
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COL_COMP_KATA)) == 1,
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COL_COMP_KUMITE)) == 1
+                );
+
+                // Verificar tipo de competencia
+                boolean isEligible = false;
+                if (category.getType().equals("kata") && competitor.isParticipateKata()) {
+                    isEligible = true;
+                } else if (category.getType().equals("kumite") && competitor.isParticipateKumite()) {
+                    isEligible = true;
+                } else if (category.getType().equals("both")) {
+                    isEligible = true;
+                }
+
+                if (isEligible) {
+                    competitors.add(competitor);
+                }
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return competitors;
+    }
+
+    // ==================== MÉTODOS PARA COMPETENCIAS ====================
+
     public long insertCompetition(Competition competition) {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();

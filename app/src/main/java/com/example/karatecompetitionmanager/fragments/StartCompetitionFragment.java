@@ -103,30 +103,73 @@ public class StartCompetitionFragment extends Fragment {
         startNextMatch();
     }
 
+
+
     private void loadParticipants() {
-        participants = new ArrayList<>();
-        List<Competitor> allCompetitors = dbHelper.getAllCompetitors("age", true);
+        // Obtener competidores asignados a la categoría desde la base de datos
+        participants = dbHelper.getCompetitorsByCategory(currentCategory.getFolio());
 
-        for (Competitor competitor : allCompetitors) {
-            boolean matches = false;
+        // Si no hay competidores asignados manualmente, ofrecer asignación automática
+        if (participants.isEmpty()) {
+            new AlertDialog.Builder(getContext())
+                    .setTitle("Sin competidores asignados")
+                    .setMessage("Esta categoría no tiene competidores asignados.\n\n" +
+                            "¿Desea asignar automáticamente los competidores elegibles?")
+                    .setPositiveButton("Sí", (dialog, which) -> {
+                        List<Competitor> eligibleCompetitors = dbHelper.getEligibleCompetitors(currentCategory);
 
-            if (competitor.getBelt().equals(currentCategory.getBelt()) &&
-                    competitor.getAge() >= currentCategory.getMinAge() &&
-                    competitor.getAge() <= currentCategory.getMaxAge()) {
+                        if (eligibleCompetitors.isEmpty()) {
+                            Toast.makeText(getContext(),
+                                    "No hay competidores elegibles para esta categoría",
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
 
-                if (currentCategory.getType().equals("kata") && competitor.isParticipateKata()) {
-                    matches = true;
-                } else if (currentCategory.getType().equals("kumite") && competitor.isParticipateKumite()) {
-                    matches = true;
-                } else if (currentCategory.getType().equals("both")) {
-                    matches = true;
-                }
-            }
+                        // Asignar automáticamente
+                        for (Competitor comp : eligibleCompetitors) {
+                            dbHelper.addCompetitorToCategory(currentCategory.getFolio(), comp.getFolio());
+                        }
 
-            if (matches) {
-                participants.add(competitor);
-            }
+                        // Recargar participantes
+                        participants = dbHelper.getCompetitorsByCategory(currentCategory.getFolio());
+
+                        Toast.makeText(getContext(),
+                                participants.size() + " competidores asignados automáticamente",
+                                Toast.LENGTH_LONG).show();
+
+                        // Verificar si hay suficientes participantes
+                        if (participants.size() < 2) {
+                            Toast.makeText(getContext(), "Se requieren al menos 2 competidores",
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        // Continuar con la competencia
+                        displayCategoryInfo();
+                        initializeTournament();
+                        startNextMatch();
+                    })
+                    .setNegativeButton("No", (d, w) -> {
+                        Toast.makeText(getContext(),
+                                "Debe asignar competidores antes de iniciar la competencia.\n" +
+                                        "Use el menú 'Gestionar Competidores'",
+                                Toast.LENGTH_LONG).show();
+                    })
+                    .setCancelable(false)
+                    .show();
         }
+    }
+
+    private void continueCompetitionSetup() {
+        if (participants.size() < 2) {
+            Toast.makeText(getContext(), "Se requieren al menos 2 competidores",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        displayCategoryInfo();
+        initializeTournament();
+        startNextMatch();
     }
 
     private void displayCategoryInfo() {

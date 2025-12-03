@@ -10,6 +10,10 @@
             android:icon="@drawable/ic_category"
             android:title="Categorías" />
         <item
+            android:id="@+id/nav_manage_category_competitors"
+            android:icon="@drawable/ic_category"
+            android:title="Gestionar Competidores" />
+        <item
             android:id="@+id/nav_start_competition"
             android:icon="@drawable/ic_play"
             android:title="Iniciar Competencia" />
