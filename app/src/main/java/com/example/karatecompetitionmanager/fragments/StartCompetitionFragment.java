@@ -49,6 +49,9 @@ public class StartCompetitionFragment extends Fragment {
     private List<String> currentRoundMatches;
     private List<String> roundWinners;
 
+    // Variable para guardar el tipo de competencia seleccionado
+    private String selectedCompetitionType = null;
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
@@ -84,10 +87,54 @@ public class StartCompetitionFragment extends Fragment {
             return;
         }
 
+        // Si la categoría es "both", preguntar qué tipo de competencia desea realizar
+        if (currentCategory.getType().equals("both")) {
+            showCompetitionTypeDialog();
+        } else {
+            selectedCompetitionType = currentCategory.getType();
+            continueStartCompetition();
+        }
+    }
+
+    private void showCompetitionTypeDialog() {
+        View dialogView = LayoutInflater.from(getContext())
+                .inflate(R.layout.dialog_select_competition_type, null);
+
+        RadioGroup rgCompetitionType = dialogView.findViewById(R.id.rg_competition_type);
+
+        new AlertDialog.Builder(getContext())
+                .setTitle("Seleccionar Tipo de Competencia")
+                .setMessage("Esta categoría permite Kata y Kumite. Seleccione el tipo de competencia:")
+                .setView(dialogView)
+                .setPositiveButton("Continuar", (dialog, which) -> {
+                    int selectedId = rgCompetitionType.getCheckedRadioButtonId();
+                    if (selectedId == -1) {
+                        Toast.makeText(getContext(), "Debe seleccionar un tipo de competencia",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    RadioButton rbSelected = dialogView.findViewById(selectedId);
+                    String typeText = rbSelected.getText().toString().toLowerCase();
+
+                    if (typeText.equals("kata")) {
+                        selectedCompetitionType = "kata";
+                    } else {
+                        selectedCompetitionType = "kumite";
+                    }
+
+                    continueStartCompetition();
+                })
+                .setNegativeButton("Cancelar", null)
+                .setCancelable(false)
+                .show();
+    }
+
+    private void continueStartCompetition() {
         loadParticipants();
 
         if (participants.isEmpty()) {
-            Toast.makeText(getContext(), "No hay competidores para esta categoría",
+            Toast.makeText(getContext(), "No hay competidores para esta categoría y tipo de competencia",
                     Toast.LENGTH_SHORT).show();
             return;
         }
@@ -104,80 +151,37 @@ public class StartCompetitionFragment extends Fragment {
     }
 
     private void loadParticipants() {
-        // Obtener competidores asignados a la categoría desde la base de datos
-        participants = dbHelper.getCompetitorsByCategory(currentCategory.getFolio());
+        participants = new ArrayList<>();
+        List<Competitor> allCompetitors = dbHelper.getAllCompetitors("age", true);
 
-        // Si no hay competidores asignados manualmente, ofrecer asignación automática
-        if (participants.isEmpty()) {
-            new AlertDialog.Builder(getContext())
-                    .setTitle("Sin competidores asignados")
-                    .setMessage("Esta categoría no tiene competidores asignados.\n\n" +
-                            "¿Desea asignar automáticamente los competidores elegibles?")
-                    .setPositiveButton("Sí", (dialog, which) -> {
-                        List<Competitor> eligibleCompetitors = dbHelper.getEligibleCompetitors(currentCategory);
+        for (Competitor competitor : allCompetitors) {
+            boolean matches = false;
 
-                        if (eligibleCompetitors.isEmpty()) {
-                            Toast.makeText(getContext(),
-                                    "No hay competidores elegibles para esta categoría",
-                                    Toast.LENGTH_SHORT).show();
-                            return;
-                        }
+            if (competitor.getBelt().equals(currentCategory.getBelt()) &&
+                    competitor.getAge() >= currentCategory.getMinAge() &&
+                    competitor.getAge() <= currentCategory.getMaxAge()) {
 
-                        // Asignar automáticamente
-                        for (Competitor comp : eligibleCompetitors) {
-                            dbHelper.addCompetitorToCategory(currentCategory.getFolio(), comp.getFolio());
-                        }
+                // Usar el tipo seleccionado en lugar del tipo de la categoría
+                if (selectedCompetitionType.equals("kata") && competitor.isParticipateKata()) {
+                    matches = true;
+                } else if (selectedCompetitionType.equals("kumite") && competitor.isParticipateKumite()) {
+                    matches = true;
+                }
+            }
 
-                        // Recargar participantes
-                        participants = dbHelper.getCompetitorsByCategory(currentCategory.getFolio());
-
-                        Toast.makeText(getContext(),
-                                participants.size() + " competidores asignados automáticamente",
-                                Toast.LENGTH_LONG).show();
-
-                        // Verificar si hay suficientes participantes
-                        if (participants.size() < 2) {
-                            Toast.makeText(getContext(), "Se requieren al menos 2 competidores",
-                                    Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-
-                        // Continuar con la competencia
-                        displayCategoryInfo();
-                        initializeTournament();
-                        startNextMatch();
-                    })
-                    .setNegativeButton("No", (d, w) -> {
-                        Toast.makeText(getContext(),
-                                "Debe asignar competidores antes de iniciar la competencia.\n" +
-                                        "Use el menú 'Gestionar Competidores'",
-                                Toast.LENGTH_LONG).show();
-                    })
-                    .setCancelable(false)
-                    .show();
+            if (matches) {
+                participants.add(competitor);
+            }
         }
-    }
-
-    private void continueCompetitionSetup() {
-        if (participants.size() < 2) {
-            Toast.makeText(getContext(), "Se requieren al menos 2 competidores",
-                    Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        displayCategoryInfo();
-        initializeTournament();
-        startNextMatch();
     }
 
     private void displayCategoryInfo() {
-        String type = currentCategory.getType().equals("kata") ? "Kata" :
-                (currentCategory.getType().equals("kumite") ? "Kumite" : "Kata y Kumite");
+        String type = selectedCompetitionType.equals("kata") ? "Kata" : "Kumite";
 
         String info = "Categoría: " + currentCategory.getFolio() + "\n" +
                 "Cinturón: " + currentCategory.getBelt() + "\n" +
                 "Edad: " + currentCategory.getMinAge() + "-" + currentCategory.getMaxAge() + "\n" +
-                "Tipo: " + type + "\n" +
+                "Tipo de Competencia: " + type + "\n" +
                 "Participantes: " + participants.size();
 
         tvCategoryInfo.setText(info);
@@ -263,7 +267,8 @@ public class StartCompetitionFragment extends Fragment {
             return;
         }
 
-        if (currentCategory.getType().equals("kata")) {
+        // Usar el tipo seleccionado para determinar qué diálogo mostrar
+        if (selectedCompetitionType.equals("kata")) {
             showKataDialog(comp1, comp2);
         } else {
             showKumiteDialog(comp1, comp2);
@@ -665,6 +670,7 @@ public class StartCompetitionFragment extends Fragment {
                     layoutBracket.removeAllViews();
                     tvCategoryInfo.setVisibility(View.GONE);
                     etCategoryFolio.setText("");
+                    selectedCompetitionType = null;
                 })
                 .show();
     }

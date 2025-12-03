@@ -130,16 +130,50 @@ public class CategoriesFragment extends Fragment {
                 .setTitle("Buscar Categoría")
                 .setView(dialogView)
                 .setPositiveButton("Buscar", (dialog, which) -> {
-                    String folio = etFolio.getText().toString().trim();
-                    Category category = dbHelper.getCategory(folio);
+                    String searchTerm = etFolio.getText().toString().trim();
 
-                    if (category == null) {
-                        Toast.makeText(getContext(), "Categoría no encontrada",
+                    if (searchTerm.isEmpty()) {
+                        Toast.makeText(getContext(), "Ingrese un término de búsqueda",
                                 Toast.LENGTH_SHORT).show();
                         return;
                     }
 
-                    showEditCategoryDialog(category);
+                    List<Category> results = dbHelper.searchCategoriesByFolio(searchTerm);
+
+                    if (results.isEmpty()) {
+                        Toast.makeText(getContext(), "No se encontraron categorías",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    if (results.size() == 1) {
+                        showEditCategoryDialog(results.get(0));
+                    } else {
+                        showCategorySelectionDialog(results, true);
+                    }
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void showCategorySelectionDialog(List<Category> categories, boolean forEdit) {
+        String[] options = new String[categories.size()];
+        for (int i = 0; i < categories.size(); i++) {
+            Category c = categories.get(i);
+            String type = c.getType().equals("kata") ? "Kata" :
+                    (c.getType().equals("kumite") ? "Kumite" : "Kata y Kumite");
+            options[i] = c.getFolio() + " - " + c.getBelt() + " (" + c.getMinAge() + "-" + c.getMaxAge() + " años, " + type + ")";
+        }
+
+        new AlertDialog.Builder(getContext())
+                .setTitle("Seleccione una categoría")
+                .setItems(options, (dialog, which) -> {
+                    Category selected = categories.get(which);
+                    if (forEdit) {
+                        showEditCategoryDialog(selected);
+                    } else {
+                        confirmDeleteCategory(selected);
+                    }
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
@@ -154,7 +188,6 @@ public class CategoriesFragment extends Fragment {
         EditText etMaxAge = dialogView.findViewById(R.id.et_max_age);
         RadioGroup rgType = dialogView.findViewById(R.id.rg_category_type);
 
-        // Cargar datos actuales
         String[] belts = {"Blanco", "Amarillo", "Naranja", "Verde", "Azul", "Marron", "Negro"};
         ArrayAdapter<String> beltAdapter = new ArrayAdapter<>(getContext(),
                 android.R.layout.simple_spinner_item, belts);
@@ -221,40 +254,53 @@ public class CategoriesFragment extends Fragment {
                 .setTitle("Eliminar Categoría")
                 .setView(dialogView)
                 .setPositiveButton("Buscar", (dialog, which) -> {
-                    String folio = etFolio.getText().toString().trim();
-                    Category category = dbHelper.getCategory(folio);
+                    String searchTerm = etFolio.getText().toString().trim();
 
-                    if (category == null) {
-                        Toast.makeText(getContext(), "Categoría no encontrada",
+                    if (searchTerm.isEmpty()) {
+                        Toast.makeText(getContext(), "Ingrese un término de búsqueda",
                                 Toast.LENGTH_SHORT).show();
                         return;
                     }
 
-                    // Primera confirmación
-                    new AlertDialog.Builder(getContext())
-                            .setTitle("Confirmar eliminación")
-                            .setMessage("¿Eliminar categoría " + folio + "?")
-                            .setPositiveButton("Sí", (d2, w2) -> {
-                                // Segunda confirmación
-                                new AlertDialog.Builder(getContext())
-                                        .setTitle("Segunda confirmación")
-                                        .setMessage("Esta acción no se puede deshacer")
-                                        .setPositiveButton("Confirmar", (d3, w3) -> {
-                                            int result = dbHelper.deleteCategory(folio);
-                                            if (result > 0) {
-                                                Toast.makeText(getContext(),
-                                                        "Categoría eliminada",
-                                                        Toast.LENGTH_SHORT).show();
-                                                loadCategories();
-                                            }
-                                        })
-                                        .setNegativeButton("Cancelar", null)
-                                        .show();
-                            })
-                            .setNegativeButton("No", null)
-                            .show();
+                    List<Category> results = dbHelper.searchCategoriesByFolio(searchTerm);
+
+                    if (results.isEmpty()) {
+                        Toast.makeText(getContext(), "No se encontraron categorías",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    if (results.size() == 1) {
+                        confirmDeleteCategory(results.get(0));
+                    } else {
+                        showCategorySelectionDialog(results, false);
+                    }
                 })
                 .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void confirmDeleteCategory(Category category) {
+        new AlertDialog.Builder(getContext())
+                .setTitle("Confirmar eliminación")
+                .setMessage("¿Eliminar categoría " + category.getFolio() + "?")
+                .setPositiveButton("Sí", (d2, w2) -> {
+                    new AlertDialog.Builder(getContext())
+                            .setTitle("Segunda confirmación")
+                            .setMessage("Esta acción no se puede deshacer")
+                            .setPositiveButton("Confirmar", (d3, w3) -> {
+                                int result = dbHelper.deleteCategory(category.getFolio());
+                                if (result > 0) {
+                                    Toast.makeText(getContext(),
+                                            "Categoría eliminada",
+                                            Toast.LENGTH_SHORT).show();
+                                    loadCategories();
+                                }
+                            })
+                            .setNegativeButton("Cancelar", null)
+                            .show();
+                })
+                .setNegativeButton("No", null)
                 .show();
     }
 
