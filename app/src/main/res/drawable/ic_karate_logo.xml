@@ -1,0 +1,29 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- Círculo exterior -->
+    <path
+        android:pathData="M100,10 A90,90 0 1,1 100,190 A90,90 0 1,1 100,10 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:fillColor="#00000000" />
+
+    <!-- Círculo interior -->
+    <path
+        android:pathData="M100,30 A70,70 0 1,1 100,170 A70,70 0 1,1 100,30 Z"
+        android:fillColor="#FF6F00" />
+
+    <!-- Figura de karateka simplificada -->
+    <path
+        android:pathData="M100,50 Q95,55 95,65 L95,85 L80,100 L80,110 L95,95 L95,120 L85,140 L92,145 L100,125 L108,145 L115,140 L105,120 L105,95 L120,110 L120,100 L105,85 L105,65 Q105,55 100,50 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Cinturón -->
+    <path
+        android:pathData="M90,95 L110,95 L110,100 L90,100 Z"
+        android:fillColor="#000000" />
+
+</vector>

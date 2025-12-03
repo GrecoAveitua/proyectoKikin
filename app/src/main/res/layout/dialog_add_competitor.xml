@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <EditText
+            android:id="@+id/et_competitor_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Nombre del competidor"
+            android:inputType="textPersonName" />
+
+        <EditText
+            android:id="@+id/et_competitor_dojo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Nombre del dojo"
+            android:layout_marginTop="8dp"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/et_competitor_age"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Edad"
+            android:layout_marginTop="8dp"
+            android:inputType="number" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Grado de cinturón:"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/sp_competitor_belt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Participa en:"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold" />
+
+        <CheckBox
+            android:id="@+id/cb_kata"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Kata" />
+
+        <CheckBox
+            android:id="@+id/cb_kumite"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Kumite (Combate)" />
+
+    </LinearLayout>
+
+</ScrollView>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardElevation="4dp"
+    app:cardCornerRadius="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#FFFDE7">
+
+        <TextView
+            android:id="@+id/tv_competition_category"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Categoría: Blanco (10-15 años) - Kata"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:textColor="#1A237E" />
+
+        <TextView
+            android:id="@+id/tv_competition_date"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Fecha: 2024-01-15 14:30:00"
+            android:textSize="14sp"
+            android:layout_marginTop="8dp"
+            android:textColor="#424242" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#E0E0E0"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Resultados:"
+            android:textStyle="bold"
+            android:textSize="15sp"
+            android:layout_marginBottom="8dp"
+            android:textColor="#1A237E" />
+
+        <TextView
+            android:id="@+id/tv_first_place"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🥇 1er Lugar: Juan Pérez"
+            android:textSize="15sp"
+            android:textColor="#FFD700"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tv_second_place"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🥈 2do Lugar: María García"
+            android:textSize="14sp"
+            android:textColor="#C0C0C0"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tv_third_place"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🥉 3er Lugar: Carlos López"
+            android:textSize="14sp"
+            android:textColor="#CD7F32" />
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>

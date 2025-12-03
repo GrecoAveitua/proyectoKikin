@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Grado de cinturón:"
+        android:textStyle="bold" />
+
+    <Spinner
+        android:id="@+id/sp_category_belt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/et_min_age"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Edad mínima"
+        android:inputType="number" />
+
+    <EditText
+        android:id="@+id/et_max_age"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Edad máxima"
+        android:layout_marginTop="8dp"
+        android:inputType="number" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Tipo de competencia:"
+        android:layout_marginTop="12dp"
+        android:textStyle="bold" />
+
+    <RadioGroup
+        android:id="@+id/rg_category_type"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="4dp">
+
+        <RadioButton
+            android:id="@+id/rb_kata"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Kata" />
+
+        <RadioButton
+            android:id="@+id/rb_kumite"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Kumite (Combate)" />
+
+        <RadioButton
+            android:id="@+id/rb_both"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ambos"
+            android:checked="true" />
+
+    </RadioGroup>
+
+</LinearLayout>
