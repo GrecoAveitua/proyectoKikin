@@ -103,8 +103,6 @@ public class StartCompetitionFragment extends Fragment {
         startNextMatch();
     }
 
-
-
     private void loadParticipants() {
         // Obtener competidores asignados a la categoría desde la base de datos
         participants = dbHelper.getCompetitorsByCategory(currentCategory.getFolio());
