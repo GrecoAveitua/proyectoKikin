@@ -71,31 +71,55 @@ public class ManageCategoryCompetitorsFragment extends Fragment {
     }
 
     private void searchCategory() {
-        String folio = etCategoryFolio.getText().toString().trim();
+        String searchTerm = etCategoryFolio.getText().toString().trim();
 
-        if (folio.isEmpty()) {
-            Toast.makeText(getContext(), "Ingrese el folio de la categoría",
+        if (searchTerm.isEmpty()) {
+            Toast.makeText(getContext(), "Ingrese un término de búsqueda",
                     Toast.LENGTH_SHORT).show();
             return;
         }
 
-        currentCategory = dbHelper.getCategory(folio);
+        // Buscar categorías que coincidan con el término
+        List<Category> results = dbHelper.searchCategoriesByFolio(searchTerm);
 
-        if (currentCategory == null) {
-            Toast.makeText(getContext(), "Categoría no encontrada",
+        if (results.isEmpty()) {
+            Toast.makeText(getContext(), "No se encontraron categorías",
                     Toast.LENGTH_SHORT).show();
-            tvCategoryInfo.setVisibility(View.GONE);
-            tvCompetitorCount.setVisibility(View.GONE);
-            btnAddCompetitor.setEnabled(false);
-            btnRemoveCompetitor.setEnabled(false);
-            btnAutoAssign.setEnabled(false);
+            resetView();
             return;
         }
 
-        // Mostrar información de la categoría
+        if (results.size() == 1) {
+            // Si hay solo una categoría, cargarla directamente
+            loadCategory(results.get(0));
+        } else {
+            // Si hay múltiples resultados, mostrar diálogo de selección
+            showCategorySelectionDialog(results);
+        }
+    }
+
+    private void showCategorySelectionDialog(List<Category> categories) {
+        String[] options = new String[categories.size()];
+        for (int i = 0; i < categories.size(); i++) {
+            Category c = categories.get(i);
+            String type = c.getType().equals("kata") ? "Kata" :
+                    (c.getType().equals("kumite") ? "Kumite" : "Kata y Kumite");
+            options[i] = c.getFolio() + " - " + c.getBelt() + " (" +
+                    c.getMinAge() + "-" + c.getMaxAge() + " años, " + type + ")";
+        }
+
+        new AlertDialog.Builder(getContext())
+                .setTitle("Seleccione una categoría")
+                .setItems(options, (dialog, which) -> {
+                    loadCategory(categories.get(which));
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void loadCategory(Category category) {
+        currentCategory = category;
         displayCategoryInfo();
-
-        // Cargar competidores de la categoría
         loadCategoryCompetitors();
 
         // Habilitar botones
@@ -118,13 +142,14 @@ public class ManageCategoryCompetitorsFragment extends Fragment {
     }
 
     private void loadCategoryCompetitors() {
-        categoryCompetitors = dbHelper.getCompetitorsByCategory(currentCategory.getFolio());
+        // Obtener todos los competidores elegibles para esta categoría
+        categoryCompetitors = getEligibleCompetitorsForCategory(currentCategory);
 
         if (categoryCompetitors.isEmpty()) {
-            tvCompetitorCount.setText("No hay competidores en esta categoría");
+            tvCompetitorCount.setText("No hay competidores elegibles para esta categoría");
             tvCompetitorCount.setVisibility(View.VISIBLE);
         } else {
-            tvCompetitorCount.setText("Total de competidores: " + categoryCompetitors.size());
+            tvCompetitorCount.setText("Total de competidores elegibles: " + categoryCompetitors.size());
             tvCompetitorCount.setVisibility(View.VISIBLE);
         }
 
@@ -132,68 +157,53 @@ public class ManageCategoryCompetitorsFragment extends Fragment {
         recyclerView.setAdapter(adapter);
     }
 
-    private void showAddCompetitorDialog() {
-        if (currentCategory == null) return;
+    private List<Competitor> getEligibleCompetitorsForCategory(Category category) {
+        List<Competitor> eligible = new ArrayList<>();
+        List<Competitor> allCompetitors = dbHelper.getAllCompetitors("age", true);
 
-        // Obtener competidores elegibles que NO estén ya en la categoría
-        List<Competitor> eligibleCompetitors = dbHelper.getEligibleCompetitors(currentCategory);
-
-        // Filtrar los que ya están en la categoría
-        List<Competitor> availableCompetitors = new ArrayList<>();
-        for (Competitor comp : eligibleCompetitors) {
-            if (!dbHelper.isCompetitorInCategory(currentCategory.getFolio(), comp.getFolio())) {
-                availableCompetitors.add(comp);
+        for (Competitor competitor : allCompetitors) {
+            // Verificar si el competidor cumple los requisitos de la categoría
+            if (isCompetitorEligible(competitor, category)) {
+                eligible.add(competitor);
             }
         }
 
-        if (availableCompetitors.isEmpty()) {
-            Toast.makeText(getContext(),
-                    "No hay competidores disponibles para esta categoría",
+        return eligible;
+    }
+
+    private boolean isCompetitorEligible(Competitor competitor, Category category) {
+        // Verificar cinturón
+        if (!competitor.getBelt().equals(category.getBelt())) {
+            return false;
+        }
+
+        // Verificar edad
+        if (competitor.getAge() < category.getMinAge() ||
+                competitor.getAge() > category.getMaxAge()) {
+            return false;
+        }
+
+        // Verificar tipo de participación
+        String categoryType = category.getType();
+        if (categoryType.equals("kata")) {
+            return competitor.isParticipateKata();
+        } else if (categoryType.equals("kumite")) {
+            return competitor.isParticipateKumite();
+        } else { // "both"
+            return competitor.isParticipateKata() || competitor.isParticipateKumite();
+        }
+    }
+
+    private void showAddCompetitorDialog() {
+        if (currentCategory == null) {
+            Toast.makeText(getContext(), "Primero seleccione una categoría",
                     Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Crear array de nombres para el diálogo
-        String[] competitorNames = new String[availableCompetitors.size()];
-        for (int i = 0; i < availableCompetitors.size(); i++) {
-            Competitor c = availableCompetitors.get(i);
-            competitorNames[i] = c.getName() + " (" + c.getFolio() + ")";
-        }
-
-        // Mostrar diálogo de selección múltiple
-        boolean[] selectedItems = new boolean[availableCompetitors.size()];
-
-        new AlertDialog.Builder(getContext())
-                .setTitle("Añadir Competidores")
-                .setMultiChoiceItems(competitorNames, selectedItems,
-                        (dialog, which, isChecked) -> selectedItems[which] = isChecked)
-                .setPositiveButton("Añadir", (dialog, which) -> {
-                    int addedCount = 0;
-                    for (int i = 0; i < selectedItems.length; i++) {
-                        if (selectedItems[i]) {
-                            Competitor comp = availableCompetitors.get(i);
-                            long result = dbHelper.addCompetitorToCategory(
-                                    currentCategory.getFolio(), comp.getFolio());
-                            if (result > 0) {
-                                addedCount++;
-                            }
-                        }
-                    }
-
-                    if (addedCount > 0) {
-                        Toast.makeText(getContext(),
-                                addedCount + " competidor(es) añadido(s)",
-                                Toast.LENGTH_SHORT).show();
-                        loadCategoryCompetitors();
-                    }
-                })
-                .setNegativeButton("Cancelar", null)
-                .show();
-    }
-
-    private void showRemoveCompetitorDialog() {
-        if (currentCategory == null || categoryCompetitors.isEmpty()) {
-            Toast.makeText(getContext(), "No hay competidores para eliminar",
+        if (categoryCompetitors.isEmpty()) {
+            Toast.makeText(getContext(),
+                    "No hay competidores elegibles para esta categoría",
                     Toast.LENGTH_SHORT).show();
             return;
         }
@@ -202,77 +212,106 @@ public class ManageCategoryCompetitorsFragment extends Fragment {
         String[] competitorNames = new String[categoryCompetitors.size()];
         for (int i = 0; i < categoryCompetitors.size(); i++) {
             Competitor c = categoryCompetitors.get(i);
-            competitorNames[i] = c.getName() + " (" + c.getFolio() + ")";
+            competitorNames[i] = c.getName() + " (" + c.getFolio() + ") - " +
+                    c.getAge() + " años, " + c.getBelt();
         }
 
-        // Mostrar diálogo de selección múltiple
-        boolean[] selectedItems = new boolean[categoryCompetitors.size()];
-
         new AlertDialog.Builder(getContext())
-                .setTitle("Eliminar Competidores")
-                .setMultiChoiceItems(competitorNames, selectedItems,
-                        (dialog, which, isChecked) -> selectedItems[which] = isChecked)
-                .setPositiveButton("Eliminar", (dialog, which) -> {
-                    int removedCount = 0;
-                    for (int i = 0; i < selectedItems.length; i++) {
-                        if (selectedItems[i]) {
-                            Competitor comp = categoryCompetitors.get(i);
-                            int result = dbHelper.removeCompetitorFromCategory(
-                                    currentCategory.getFolio(), comp.getFolio());
-                            if (result > 0) {
-                                removedCount++;
-                            }
-                        }
-                    }
-
-                    if (removedCount > 0) {
-                        Toast.makeText(getContext(),
-                                removedCount + " competidor(es) eliminado(s)",
-                                Toast.LENGTH_SHORT).show();
-                        loadCategoryCompetitors();
-                    }
-                })
-                .setNegativeButton("Cancelar", null)
+                .setTitle("Competidores Elegibles")
+                .setMessage("Esta es la lista de competidores que cumplen los requisitos de la categoría:\n\n" +
+                        "• Mismo cinturón\n" +
+                        "• Edad dentro del rango\n" +
+                        "• Participan en el tipo de competencia")
+                .setItems(competitorNames, null)
+                .setPositiveButton("Entendido", null)
                 .show();
     }
 
-    private void autoAssignCompetitors() {
-        if (currentCategory == null) return;
-
-        // Obtener competidores elegibles
-        List<Competitor> eligibleCompetitors = dbHelper.getEligibleCompetitors(currentCategory);
-
-        if (eligibleCompetitors.isEmpty()) {
-            Toast.makeText(getContext(),
-                    "No hay competidores elegibles para asignar automáticamente",
+    private void showRemoveCompetitorDialog() {
+        if (currentCategory == null) {
+            Toast.makeText(getContext(), "Primero seleccione una categoría",
                     Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Confirmar acción
+        if (categoryCompetitors.isEmpty()) {
+            Toast.makeText(getContext(), "No hay competidores en esta categoría",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Mostrar información
+        Toast.makeText(getContext(),
+                "Función de eliminación manual deshabilitada.\nLos competidores se asignan automáticamente según elegibilidad.",
+                Toast.LENGTH_LONG).show();
+    }
+
+    private void autoAssignCompetitors() {
+        if (currentCategory == null) {
+            Toast.makeText(getContext(), "Primero seleccione una categoría",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Recargar competidores elegibles
+        loadCategoryCompetitors();
+
+        if (categoryCompetitors.isEmpty()) {
+            Toast.makeText(getContext(),
+                    "No hay competidores elegibles para asignar a esta categoría",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // Mostrar información detallada
+        StringBuilder message = new StringBuilder();
+        message.append("Se encontraron ").append(categoryCompetitors.size())
+                .append(" competidor(es) elegible(s) para esta categoría:\n\n");
+
+        for (Competitor comp : categoryCompetitors) {
+            message.append("• ").append(comp.getName())
+                    .append(" (").append(comp.getFolio()).append(")\n");
+        }
+
+        message.append("\nLos competidores se asignan automáticamente según:\n")
+                .append("✓ Cinturón: ").append(currentCategory.getBelt()).append("\n")
+                .append("✓ Edad: ").append(currentCategory.getMinAge())
+                .append("-").append(currentCategory.getMaxAge()).append(" años\n")
+                .append("✓ Tipo: ");
+
+        String type = currentCategory.getType().equals("kata") ? "Kata" :
+                (currentCategory.getType().equals("kumite") ? "Kumite" : "Kata o Kumite");
+        message.append(type);
+
         new AlertDialog.Builder(getContext())
                 .setTitle("Asignación Automática")
-                .setMessage("Se asignarán " + eligibleCompetitors.size() +
-                        " competidores elegibles a esta categoría.\n\n¿Desea continuar?")
-                .setPositiveButton("Sí", (dialog, which) -> {
-                    int addedCount = 0;
-                    for (Competitor comp : eligibleCompetitors) {
-                        // Solo añadir si no está ya en la categoría
-                        if (!dbHelper.isCompetitorInCategory(currentCategory.getFolio(), comp.getFolio())) {
-                            long result = dbHelper.addCompetitorToCategory(
-                                    currentCategory.getFolio(), comp.getFolio());
-                            if (result > 0) {
-                                addedCount++;
-                            }
-                        }
-                    }
-
-                    Toast.makeText(getContext(),
-                            addedCount + " competidor(es) asignado(s) automáticamente",
-                            Toast.LENGTH_LONG).show();
-                    loadCategoryCompetitors();
-                })
-                .setNegativeButton("No", null)
+                .setMessage(message.toString())
+                .setPositiveButton("Aceptar", null)
                 .show();
+    }
+
+    private void resetView() {
+        currentCategory = null;
+        categoryCompetitors.clear();
+
+        tvCategoryInfo.setVisibility(View.GONE);
+        tvCompetitorCount.setVisibility(View.GONE);
+
+        if (adapter != null) {
+            adapter = new CompetitorAdapter(categoryCompetitors);
+            recyclerView.setAdapter(adapter);
+        }
+
+        btnAddCompetitor.setEnabled(false);
+        btnRemoveCompetitor.setEnabled(false);
+        btnAutoAssign.setEnabled(false);
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (dbHelper != null) {
+            dbHelper.close();
+        }
     }
 }
