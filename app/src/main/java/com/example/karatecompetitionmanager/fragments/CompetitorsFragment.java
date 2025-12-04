@@ -2,15 +2,19 @@ package com.example.karatecompetitionmanager.fragments;
 
 import android.app.AlertDialog;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -24,7 +28,10 @@ import com.example.karatecompetitionmanager.adapters.CompetitorAdapter;
 import com.example.karatecompetitionmanager.database.DatabaseHelper;
 import com.example.karatecompetitionmanager.models.Competitor;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class CompetitorsFragment extends Fragment {
 
@@ -33,7 +40,13 @@ public class CompetitorsFragment extends Fragment {
     private CompetitorAdapter adapter;
     private Button btnAdd, btnUpdate, btnDelete, btnView;
     private RadioGroup rgSort;
+    private EditText etSearch;
+    private LinearLayout layoutSearchResults;
+    private TextView tvSearchCount;
     private boolean ascending = true;
+
+    // Map para almacenar resultados de búsqueda
+    private Map<String, Competitor> searchResultsMap;
 
     @Nullable
     @Override
@@ -42,6 +55,7 @@ public class CompetitorsFragment extends Fragment {
         View view = inflater.inflate(R.layout.fragment_competitors, container, false);
 
         dbHelper = new DatabaseHelper(getContext());
+        searchResultsMap = new HashMap<>();
 
         recyclerView = view.findViewById(R.id.recycler_competitors);
         btnAdd = view.findViewById(R.id.btn_add_competitor);
@@ -49,13 +63,19 @@ public class CompetitorsFragment extends Fragment {
         btnDelete = view.findViewById(R.id.btn_delete_competitor);
         btnView = view.findViewById(R.id.btn_view_competitors);
         rgSort = view.findViewById(R.id.rg_sort_order);
+        etSearch = view.findViewById(R.id.et_search_competitor);
+        layoutSearchResults = view.findViewById(R.id.layout_search_results);
+        tvSearchCount = view.findViewById(R.id.tv_search_count);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
 
         btnAdd.setOnClickListener(v -> showAddCompetitorDialog());
         btnUpdate.setOnClickListener(v -> showUpdateCompetitorDialog());
         btnDelete.setOnClickListener(v -> showDeleteCompetitorDialog());
-        btnView.setOnClickListener(v -> loadCompetitors());
+        btnView.setOnClickListener(v -> {
+            etSearch.setText("");
+            loadCompetitors();
+        });
 
         rgSort.setOnCheckedChangeListener((group, checkedId) -> {
             if (checkedId == R.id.rb_ascending) {
@@ -63,12 +83,80 @@ public class CompetitorsFragment extends Fragment {
             } else {
                 ascending = false;
             }
-            loadCompetitors();
+
+            if (etSearch.getText().toString().trim().isEmpty()) {
+                loadCompetitors();
+            } else {
+                performSearch(etSearch.getText().toString().trim());
+            }
+        });
+
+        // Implementar búsqueda en tiempo real con Map
+        etSearch.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String query = s.toString().trim();
+                if (query.isEmpty()) {
+                    layoutSearchResults.setVisibility(View.GONE);
+                    loadCompetitors();
+                } else {
+                    performSearch(query);
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
         });
 
         loadCompetitors();
 
         return view;
+    }
+
+    private void performSearch(String query) {
+        // Limpiar el Map anterior
+        searchResultsMap.clear();
+
+        List<Competitor> allCompetitors = dbHelper.getAllCompetitors("name", true);
+
+        // Usar Map.put() para almacenar coincidencias
+        for (Competitor competitor : allCompetitors) {
+            // Buscar coincidencias en folio, nombre, dojo o cinturón
+            if (competitor.getFolio().toLowerCase().contains(query.toLowerCase()) ||
+                    competitor.getName().toLowerCase().contains(query.toLowerCase()) ||
+                    competitor.getDojo().toLowerCase().contains(query.toLowerCase()) ||
+                    competitor.getBelt().toLowerCase().contains(query.toLowerCase())) {
+
+                // Usar put() para agregar al Map con el folio como key
+                searchResultsMap.put(competitor.getFolio(), competitor);
+            }
+        }
+
+        // Convertir Map a List para mostrar
+        List<Competitor> searchResults = new ArrayList<>(searchResultsMap.values());
+
+        // Ordenar resultados
+        if (searchResults.size() > 0) {
+            searchResults.sort((c1, c2) -> {
+                int result = Integer.compare(c1.getAge(), c2.getAge());
+                if (result == 0) {
+                    result = c1.getName().compareToIgnoreCase(c2.getName());
+                }
+                return ascending ? result : -result;
+            });
+        }
+
+        // Mostrar resultados
+        adapter = new CompetitorAdapter(searchResults);
+        recyclerView.setAdapter(adapter);
+
+        // Mostrar pestaña de coincidencias
+        layoutSearchResults.setVisibility(View.VISIBLE);
+        tvSearchCount.setText("Coincidencias encontradas: " + searchResults.size() +
+                " (almacenadas en Map)");
     }
 
     private void showAddCompetitorDialog() {
@@ -103,7 +191,6 @@ public class CompetitorsFragment extends Fragment {
                         return;
                     }
 
-                    // Verificar que se haya seleccionado una opción
                     int selectedId = rgParticipation.getCheckedRadioButtonId();
                     if (selectedId == -1) {
                         Toast.makeText(getContext(), "Debe seleccionar Kata o Kumite",
@@ -111,7 +198,6 @@ public class CompetitorsFragment extends Fragment {
                         return;
                     }
 
-                    // Determinar qué opción se seleccionó
                     RadioButton selectedRadio = dialogView.findViewById(selectedId);
                     boolean kata = selectedRadio.getId() == R.id.rb_kata;
                     boolean kumite = selectedRadio.getId() == R.id.rb_kumite;
@@ -147,16 +233,49 @@ public class CompetitorsFragment extends Fragment {
                 .setTitle("Buscar Competidor")
                 .setView(dialogView)
                 .setPositiveButton("Buscar", (dialog, which) -> {
-                    String folio = etFolio.getText().toString().trim();
-                    Competitor competitor = dbHelper.getCompetitor(folio);
+                    String searchTerm = etFolio.getText().toString().trim();
 
-                    if (competitor == null) {
-                        Toast.makeText(getContext(), "Competidor no encontrado",
+                    if (searchTerm.isEmpty()) {
+                        Toast.makeText(getContext(), "Ingrese un término de búsqueda",
                                 Toast.LENGTH_SHORT).show();
                         return;
                     }
 
-                    showEditCompetitorDialog(competitor);
+                    List<Competitor> results = dbHelper.searchCompetitorsByFolio(searchTerm);
+
+                    if (results.isEmpty()) {
+                        Toast.makeText(getContext(), "No se encontraron competidores",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    if (results.size() == 1) {
+                        showEditCompetitorDialog(results.get(0));
+                    } else {
+                        showCompetitorSelectionDialog(results, true);
+                    }
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void showCompetitorSelectionDialog(List<Competitor> competitors, boolean forEdit) {
+        String[] options = new String[competitors.size()];
+        for (int i = 0; i < competitors.size(); i++) {
+            Competitor c = competitors.get(i);
+            options[i] = c.getFolio() + " - " + c.getName() + " (" + c.getAge() + " años, " +
+                    c.getBelt() + ")";
+        }
+
+        new AlertDialog.Builder(getContext())
+                .setTitle("Seleccione un competidor")
+                .setItems(options, (dialog, which) -> {
+                    Competitor selected = competitors.get(which);
+                    if (forEdit) {
+                        showEditCompetitorDialog(selected);
+                    } else {
+                        confirmDeleteCompetitor(selected);
+                    }
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
@@ -205,7 +324,6 @@ public class CompetitorsFragment extends Fragment {
                 .show();
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            // Verificar que se haya seleccionado una opción
             int selectedId = rgParticipation.getCheckedRadioButtonId();
             if (selectedId == -1) {
                 Toast.makeText(getContext(), "Debe seleccionar Kata o Kumite",
@@ -213,12 +331,10 @@ public class CompetitorsFragment extends Fragment {
                 return;
             }
 
-            // Primera confirmación
             new AlertDialog.Builder(getContext())
                     .setTitle("Confirmar cambios")
                     .setMessage("¿Está seguro de modificar este competidor?")
                     .setPositiveButton("Sí", (d2, w2) -> {
-                        // Segunda confirmación
                         new AlertDialog.Builder(getContext())
                                 .setTitle("Segunda confirmación")
                                 .setMessage("Confirme nuevamente los cambios")
@@ -262,44 +378,58 @@ public class CompetitorsFragment extends Fragment {
                 .setTitle("Eliminar Competidor")
                 .setView(dialogView)
                 .setPositiveButton("Buscar", (dialog, which) -> {
-                    String folio = etFolio.getText().toString().trim();
-                    Competitor competitor = dbHelper.getCompetitor(folio);
+                    String searchTerm = etFolio.getText().toString().trim();
 
-                    if (competitor == null) {
-                        Toast.makeText(getContext(), "Competidor no encontrado",
+                    if (searchTerm.isEmpty()) {
+                        Toast.makeText(getContext(), "Ingrese un término de búsqueda",
                                 Toast.LENGTH_SHORT).show();
                         return;
                     }
 
-                    // Primera confirmación
-                    new AlertDialog.Builder(getContext())
-                            .setTitle("Confirmar eliminación")
-                            .setMessage("¿Eliminar a " + competitor.getName() + "?")
-                            .setPositiveButton("Sí", (d2, w2) -> {
-                                // Segunda confirmación
-                                new AlertDialog.Builder(getContext())
-                                        .setTitle("Segunda confirmación")
-                                        .setMessage("Esta acción no se puede deshacer")
-                                        .setPositiveButton("Confirmar", (d3, w3) -> {
-                                            int result = dbHelper.deleteCompetitor(folio);
-                                            if (result > 0) {
-                                                Toast.makeText(getContext(),
-                                                        "Competidor eliminado",
-                                                        Toast.LENGTH_SHORT).show();
-                                                loadCompetitors();
-                                            }
-                                        })
-                                        .setNegativeButton("Cancelar", null)
-                                        .show();
-                            })
-                            .setNegativeButton("No", null)
-                            .show();
+                    List<Competitor> results = dbHelper.searchCompetitorsByFolio(searchTerm);
+
+                    if (results.isEmpty()) {
+                        Toast.makeText(getContext(), "No se encontraron competidores",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    if (results.size() == 1) {
+                        confirmDeleteCompetitor(results.get(0));
+                    } else {
+                        showCompetitorSelectionDialog(results, false);
+                    }
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
     }
 
+    private void confirmDeleteCompetitor(Competitor competitor) {
+        new AlertDialog.Builder(getContext())
+                .setTitle("Confirmar eliminación")
+                .setMessage("¿Eliminar a " + competitor.getName() + "?")
+                .setPositiveButton("Sí", (d2, w2) -> {
+                    new AlertDialog.Builder(getContext())
+                            .setTitle("Segunda confirmación")
+                            .setMessage("Esta acción no se puede deshacer")
+                            .setPositiveButton("Confirmar", (d3, w3) -> {
+                                int result = dbHelper.deleteCompetitor(competitor.getFolio());
+                                if (result > 0) {
+                                    Toast.makeText(getContext(),
+                                            "Competidor eliminado",
+                                            Toast.LENGTH_SHORT).show();
+                                    loadCompetitors();
+                                }
+                            })
+                            .setNegativeButton("Cancelar", null)
+                            .show();
+                })
+                .setNegativeButton("No", null)
+                .show();
+    }
+
     private void loadCompetitors() {
+        layoutSearchResults.setVisibility(View.GONE);
         List<Competitor> competitors = dbHelper.getAllCompetitors("name", true);
         if (competitors != null) {
             competitors.sort((c1, c2) -> {

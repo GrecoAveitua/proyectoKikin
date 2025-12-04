@@ -53,6 +53,47 @@
 
     </LinearLayout>
 
+    <!-- Campo de búsqueda -->
+    <EditText
+        android:id="@+id/et_search_competitor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="🔍 Buscar por folio, nombre, dojo o cinturón..."
+        android:layout_marginTop="8dp"
+        android:padding="12dp"
+        android:background="@drawable/edittext_background"
+        android:inputType="text" />
+
+    <!-- Pestaña de coincidencias de búsqueda -->
+    <LinearLayout
+        android:id="@+id/layout_search_results"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#E3F2FD"
+        android:padding="12dp"
+        android:layout_marginTop="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📋 Resultados de Búsqueda"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:textColor="#1A237E" />
+
+        <TextView
+            android:id="@+id/tv_search_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Coincidencias encontradas: 0 (almacenadas en Map)"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp"
+            android:textColor="#424242" />
+
+    </LinearLayout>
+
     <RadioGroup
         android:id="@+id/rg_sort_order"
         android:layout_width="match_parent"
