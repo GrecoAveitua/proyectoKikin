@@ -73,7 +73,36 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="#F5F5F5"
-            android:padding="12dp" />
+            android:padding="12dp"
+            android:layout_marginBottom="20dp" />
+
+        <!-- Orden de Eliminación / Resultados -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:background="#CCCCCC"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📊 Orden de Resultados"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textAlignment="center"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/tv_elimination_order"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Los resultados aparecerán aquí conforme avance la competencia"
+            android:textSize="14sp"
+            android:textColor="#666666"
+            android:padding="12dp"
+            android:background="#FFFDE7"
+            android:visibility="gone" />
 
     </LinearLayout>
 

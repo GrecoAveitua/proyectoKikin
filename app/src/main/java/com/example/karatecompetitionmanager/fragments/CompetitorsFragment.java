@@ -7,8 +7,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.Spinner;
 import android.widget.Toast;
@@ -17,7 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget .RecyclerView;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.karatecompetitionmanager.R;
 import com.example.karatecompetitionmanager.adapters.CompetitorAdapter;
@@ -79,8 +79,7 @@ public class CompetitorsFragment extends Fragment {
         EditText etDojo = dialogView.findViewById(R.id.et_competitor_dojo);
         EditText etAge = dialogView.findViewById(R.id.et_competitor_age);
         Spinner spBelt = dialogView.findViewById(R.id.sp_competitor_belt);
-        CheckBox cbKata = dialogView.findViewById(R.id.cb_kata);
-        CheckBox cbKumite = dialogView.findViewById(R.id.cb_kumite);
+        RadioGroup rgParticipation = dialogView.findViewById(R.id.rg_participation);
 
         // Configurar spinner de cinturones
         String[] belts = {"Blanco", "Amarillo", "Naranja", "Verde", "Azul", "Marron", "Negro"};
@@ -97,8 +96,6 @@ public class CompetitorsFragment extends Fragment {
                     String dojo = etDojo.getText().toString().trim();
                     String ageStr = etAge.getText().toString().trim();
                     String belt = spBelt.getSelectedItem().toString();
-                    boolean kata = cbKata.isChecked();
-                    boolean kumite = cbKumite.isChecked();
 
                     if (name.isEmpty() || dojo.isEmpty() || ageStr.isEmpty()) {
                         Toast.makeText(getContext(), "Complete todos los campos",
@@ -106,14 +103,21 @@ public class CompetitorsFragment extends Fragment {
                         return;
                     }
 
-                    if (!kata && !kumite) {
-                        Toast.makeText(getContext(), "Seleccione al menos Kata o Kumite",
+                    // Verificar que se haya seleccionado una opción
+                    int selectedId = rgParticipation.getCheckedRadioButtonId();
+                    if (selectedId == -1) {
+                        Toast.makeText(getContext(), "Debe seleccionar Kata o Kumite",
                                 Toast.LENGTH_SHORT).show();
                         return;
                     }
 
+                    // Determinar qué opción se seleccionó
+                    RadioButton selectedRadio = dialogView.findViewById(selectedId);
+                    boolean kata = selectedRadio.getId() == R.id.rb_kata;
+                    boolean kumite = selectedRadio.getId() == R.id.rb_kumite;
+
                     int age = Integer.parseInt(ageStr);
-                    String type = kata && kumite ? "BOTH" : (kata ? "KA" : "KU");
+                    String type = kata ? "KA" : "KU";
                     String folio = Competitor.generateFolio(name, belt, age, type);
 
                     Competitor competitor = new Competitor(folio, name, dojo, age, belt,
@@ -166,15 +170,19 @@ public class CompetitorsFragment extends Fragment {
         EditText etDojo = dialogView.findViewById(R.id.et_competitor_dojo);
         EditText etAge = dialogView.findViewById(R.id.et_competitor_age);
         Spinner spBelt = dialogView.findViewById(R.id.sp_competitor_belt);
-        CheckBox cbKata = dialogView.findViewById(R.id.cb_kata);
-        CheckBox cbKumite = dialogView.findViewById(R.id.cb_kumite);
+        RadioGroup rgParticipation = dialogView.findViewById(R.id.rg_participation);
 
         // Cargar datos actuales
         etName.setText(competitor.getName());
         etDojo.setText(competitor.getDojo());
         etAge.setText(String.valueOf(competitor.getAge()));
-        cbKata.setChecked(competitor.isParticipateKata());
-        cbKumite.setChecked(competitor.isParticipateKumite());
+
+        // Seleccionar el RadioButton correcto
+        if (competitor.isParticipateKata()) {
+            rgParticipation.check(R.id.rb_kata);
+        } else if (competitor.isParticipateKumite()) {
+            rgParticipation.check(R.id.rb_kumite);
+        }
 
         String[] belts = {"Blanco", "Amarillo", "Naranja", "Verde", "Azul", "Marron", "Negro"};
         ArrayAdapter<String> beltAdapter = new ArrayAdapter<>(getContext(),
@@ -189,13 +197,6 @@ public class CompetitorsFragment extends Fragment {
             }
         }
 
-        new AlertDialog.Builder(getContext())
-                .setTitle("Editar Competidor - " + competitor.getFolio())
-                .setView(dialogView)
-                .setPositiveButton("Guardar", null)
-                .setNegativeButton("Cancelar", null)
-                .create();
-
         AlertDialog dialog = new AlertDialog.Builder(getContext())
                 .setTitle("Editar Competidor - " + competitor.getFolio())
                 .setView(dialogView)
@@ -204,6 +205,14 @@ public class CompetitorsFragment extends Fragment {
                 .show();
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            // Verificar que se haya seleccionado una opción
+            int selectedId = rgParticipation.getCheckedRadioButtonId();
+            if (selectedId == -1) {
+                Toast.makeText(getContext(), "Debe seleccionar Kata o Kumite",
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
+
             // Primera confirmación
             new AlertDialog.Builder(getContext())
                     .setTitle("Confirmar cambios")
@@ -214,13 +223,17 @@ public class CompetitorsFragment extends Fragment {
                                 .setTitle("Segunda confirmación")
                                 .setMessage("Confirme nuevamente los cambios")
                                 .setPositiveButton("Confirmar", (d3, w3) -> {
+                                    RadioButton selectedRadio = dialogView.findViewById(selectedId);
+                                    boolean kata = selectedRadio.getId() == R.id.rb_kata;
+                                    boolean kumite = selectedRadio.getId() == R.id.rb_kumite;
+
                                     competitor.setName(etName.getText().toString().trim());
                                     competitor.setDojo(etDojo.getText().toString().trim());
                                     competitor.setAge(Integer.parseInt(
                                             etAge.getText().toString().trim()));
                                     competitor.setBelt(spBelt.getSelectedItem().toString());
-                                    competitor.setParticipateKata(cbKata.isChecked());
-                                    competitor.setParticipateKumite(cbKumite.isChecked());
+                                    competitor.setParticipateKata(kata);
+                                    competitor.setParticipateKumite(kumite);
 
                                     int result = dbHelper.updateCompetitor(competitor);
                                     if (result > 0) {

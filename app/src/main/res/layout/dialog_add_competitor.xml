@@ -48,21 +48,30 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Participa en:"
+            android:text="Participa en (seleccione UNA opción):"
             android:layout_marginTop="12dp"
             android:textStyle="bold" />
 
-        <CheckBox
-            android:id="@+id/cb_kata"
+        <RadioGroup
+            android:id="@+id/rg_participation"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Kata" />
+            android:orientation="vertical"
+            android:layout_marginTop="4dp">
 
-        <CheckBox
-            android:id="@+id/cb_kumite"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Kumite (Combate)" />
+            <RadioButton
+                android:id="@+id/rb_kata"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Kata" />
+
+            <RadioButton
+                android:id="@+id/rb_kumite"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Kumite (Combate)" />
+
+        </RadioGroup>
 
     </LinearLayout>
 

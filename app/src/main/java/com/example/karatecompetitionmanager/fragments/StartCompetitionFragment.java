@@ -7,6 +7,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
@@ -23,14 +24,16 @@ import com.example.karatecompetitionmanager.database.DatabaseHelper;
 import com.example.karatecompetitionmanager.models.Category;
 import com.example.karatecompetitionmanager.models.Competition;
 import com.example.karatecompetitionmanager.models.Competitor;
-import com.example.karatecompetitionmanager.utils.KataJudgeCalculator;
-import com.example.karatecompetitionmanager.utils.TournamentBracketManager;
+import com.example.karatecompetitionmanager.models.Match;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class StartCompetitionFragment extends Fragment {
 
@@ -38,19 +41,17 @@ public class StartCompetitionFragment extends Fragment {
     private EditText etCategoryFolio;
     private Button btnStartCompetition;
     private LinearLayout layoutBracket;
-    private TextView tvCategoryInfo;
+    private TextView tvCategoryInfo, tvEliminationOrder;
 
     private Category currentCategory;
     private List<Competitor> participants;
-    private TournamentBracketManager bracketManager;
     private Competition currentCompetition;
-
-    private int currentMatchIndex = 0;
-    private List<String> currentRoundMatches;
-    private List<String> roundWinners;
-
-    // Variable para guardar el tipo de competencia seleccionado
     private String selectedCompetitionType = null;
+
+    // Estructura del bracket
+    private List<List<Match>> bracket;
+    private int currentRound = 0;
+    private List<String> eliminationOrder; // Orden de eliminación (lugares)
 
     @Nullable
     @Override
@@ -59,11 +60,13 @@ public class StartCompetitionFragment extends Fragment {
         View view = inflater.inflate(R.layout.fragment_start_competition, container, false);
 
         dbHelper = new DatabaseHelper(getContext());
+        eliminationOrder = new ArrayList<>();
 
         etCategoryFolio = view.findViewById(R.id.et_category_folio);
         btnStartCompetition = view.findViewById(R.id.btn_start_competition);
         layoutBracket = view.findViewById(R.id.layout_bracket);
         tvCategoryInfo = view.findViewById(R.id.tv_category_info);
+        tvEliminationOrder = view.findViewById(R.id.tv_elimination_order);
 
         btnStartCompetition.setOnClickListener(v -> startCompetition());
 
@@ -74,20 +77,18 @@ public class StartCompetitionFragment extends Fragment {
         String folio = etCategoryFolio.getText().toString().trim();
 
         if (folio.isEmpty()) {
-            Toast.makeText(getContext(), "Ingrese el folio de la categoría",
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Ingrese el folio de la categoría", Toast.LENGTH_SHORT).show();
             return;
         }
 
         currentCategory = dbHelper.getCategory(folio);
 
         if (currentCategory == null) {
-            Toast.makeText(getContext(), "Categoría no encontrada",
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Categoría no encontrada", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Si la categoría es "both", preguntar qué tipo de competencia desea realizar
+        // Si la categoría es "both", preguntar qué tipo de competencia
         if (currentCategory.getType().equals("both")) {
             showCompetitionTypeDialog();
         } else {
@@ -104,25 +105,17 @@ public class StartCompetitionFragment extends Fragment {
 
         new AlertDialog.Builder(getContext())
                 .setTitle("Seleccionar Tipo de Competencia")
-                .setMessage("Esta categoría permite Kata y Kumite. Seleccione el tipo de competencia:")
+                .setMessage("Esta categoría permite Kata y Kumite. Seleccione el tipo:")
                 .setView(dialogView)
                 .setPositiveButton("Continuar", (dialog, which) -> {
                     int selectedId = rgCompetitionType.getCheckedRadioButtonId();
                     if (selectedId == -1) {
-                        Toast.makeText(getContext(), "Debe seleccionar un tipo de competencia",
-                                Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getContext(), "Debe seleccionar un tipo", Toast.LENGTH_SHORT).show();
                         return;
                     }
 
                     RadioButton rbSelected = dialogView.findViewById(selectedId);
-                    String typeText = rbSelected.getText().toString().toLowerCase();
-
-                    if (typeText.equals("kata")) {
-                        selectedCompetitionType = "kata";
-                    } else {
-                        selectedCompetitionType = "kumite";
-                    }
-
+                    selectedCompetitionType = rbSelected.getText().toString().toLowerCase().equals("kata") ? "kata" : "kumite";
                     continueStartCompetition();
                 })
                 .setNegativeButton("Cancelar", null)
@@ -134,20 +127,23 @@ public class StartCompetitionFragment extends Fragment {
         loadParticipants();
 
         if (participants.isEmpty()) {
-            Toast.makeText(getContext(), "No hay competidores para esta categoría y tipo de competencia",
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "No hay competidores elegibles", Toast.LENGTH_SHORT).show();
             return;
         }
 
         if (participants.size() < 2) {
-            Toast.makeText(getContext(), "Se requieren al menos 2 competidores",
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Se requieren al menos 2 competidores", Toast.LENGTH_SHORT).show();
             return;
         }
 
         displayCategoryInfo();
-        initializeTournament();
-        startNextMatch();
+        initializeBracket();
+        displayBracket();
+
+        // Crear registro de competencia
+        String date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+        currentCompetition = new Competition(0, currentCategory.getFolio(), date, "IN_PROGRESS", null, null, null);
+        dbHelper.insertCompetition(currentCompetition);
     }
 
     private void loadParticipants() {
@@ -155,138 +151,362 @@ public class StartCompetitionFragment extends Fragment {
         List<Competitor> allCompetitors = dbHelper.getAllCompetitors("age", true);
 
         for (Competitor competitor : allCompetitors) {
-            boolean matches = false;
-
             if (competitor.getBelt().equals(currentCategory.getBelt()) &&
                     competitor.getAge() >= currentCategory.getMinAge() &&
                     competitor.getAge() <= currentCategory.getMaxAge()) {
 
-                // Usar el tipo seleccionado en lugar del tipo de la categoría
                 if (selectedCompetitionType.equals("kata") && competitor.isParticipateKata()) {
-                    matches = true;
+                    participants.add(competitor);
                 } else if (selectedCompetitionType.equals("kumite") && competitor.isParticipateKumite()) {
-                    matches = true;
+                    participants.add(competitor);
                 }
             }
-
-            if (matches) {
-                participants.add(competitor);
-            }
         }
+
+        // Mezclar aleatoriamente
+        Collections.shuffle(participants);
     }
 
     private void displayCategoryInfo() {
         String type = selectedCompetitionType.equals("kata") ? "Kata" : "Kumite";
-
-        String info = "Categoría: " + currentCategory.getFolio() + "\n" +
-                "Cinturón: " + currentCategory.getBelt() + "\n" +
-                "Edad: " + currentCategory.getMinAge() + "-" + currentCategory.getMaxAge() + "\n" +
-                "Tipo de Competencia: " + type + "\n" +
-                "Participantes: " + participants.size();
+        String info = "📋 Categoría: " + currentCategory.getFolio() + "\n" +
+                "🥋 Cinturón: " + currentCategory.getBelt() + "\n" +
+                "👥 Edad: " + currentCategory.getMinAge() + "-" + currentCategory.getMaxAge() + "\n" +
+                "🎯 Tipo: " + type + "\n" +
+                "👤 Participantes: " + participants.size();
 
         tvCategoryInfo.setText(info);
         tvCategoryInfo.setVisibility(View.VISIBLE);
     }
 
-    private void initializeTournament() {
-        bracketManager = new TournamentBracketManager(participants);
-        currentRoundMatches = bracketManager.getCurrentRoundMatches();
-        roundWinners = new ArrayList<>();
-        currentMatchIndex = 0;
+    private void initializeBracket() {
+        bracket = new ArrayList<>();
+        int numParticipants = participants.size();
 
-        String date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                .format(new Date());
-        currentCompetition = new Competition(0, currentCategory.getFolio(), date,
-                "IN_PROGRESS", null, null, null);
-        dbHelper.insertCompetition(currentCompetition);
+        // Calcular número de rondas
+        int numRounds = (int) Math.ceil(Math.log(numParticipants) / Math.log(2));
 
-        displayBracket();
+        // Crear primera ronda
+        List<Match> firstRound = new ArrayList<>();
+        for (int i = 0; i < numParticipants; i += 2) {
+            if (i + 1 < numParticipants) {
+                firstRound.add(new Match(participants.get(i), participants.get(i + 1)));
+            } else {
+                // Pasa automáticamente (bye)
+                Match byeMatch = new Match(participants.get(i), null);
+                byeMatch.winner = participants.get(i);
+                firstRound.add(byeMatch);
+            }
+        }
+
+        bracket.add(firstRound);
+
+        // Crear rondas subsecuentes vacías
+        for (int i = 1; i < numRounds; i++) {
+            int matchesInRound = (int) Math.pow(2, numRounds - i - 1);
+            List<Match> round = new ArrayList<>();
+            for (int j = 0; j < matchesInRound; j++) {
+                round.add(new Match(null, null));
+            }
+            bracket.add(round);
+        }
     }
 
     private void displayBracket() {
         layoutBracket.removeAllViews();
 
-        TextView tvRound = new TextView(getContext());
-        tvRound.setText("RONDA ACTUAL");
-        tvRound.setTextSize(18);
-        tvRound.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        tvRound.setPadding(0, 20, 0, 20);
-        layoutBracket.addView(tvRound);
+        TextView tvTitle = new TextView(getContext());
+        tvTitle.setText("🏆 BRACKET DE ELIMINACIÓN DIRECTA");
+        tvTitle.setTextSize(18);
+        tvTitle.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        tvTitle.setTextColor(0xFF1A237E);
+        tvTitle.setPadding(0, 20, 0, 20);
+        layoutBracket.addView(tvTitle);
 
-        for (String match : currentRoundMatches) {
-            TextView tvMatch = new TextView(getContext());
-            tvMatch.setText(match);
-            tvMatch.setTextSize(16);
-            tvMatch.setPadding(20, 10, 20, 10);
-            layoutBracket.addView(tvMatch);
-        }
+        for (int roundIndex = 0; roundIndex < bracket.size(); roundIndex++) {
+            List<Match> round = bracket.get(roundIndex);
 
-        if (!roundWinners.isEmpty()) {
-            TextView tvWinners = new TextView(getContext());
-            tvWinners.setText("\nGanadores de esta ronda:");
-            tvWinners.setTextSize(16);
-            tvWinners.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-            tvWinners.setPadding(0, 20, 0, 10);
-            layoutBracket.addView(tvWinners);
+            // Título de ronda
+            TextView tvRoundTitle = new TextView(getContext());
+            String roundName = getRoundName(roundIndex, bracket.size());
+            tvRoundTitle.setText(roundName);
+            tvRoundTitle.setTextSize(16);
+            tvRoundTitle.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            tvRoundTitle.setTextColor(0xFFFF6F00);
+            tvRoundTitle.setPadding(0, 16, 0, 8);
+            layoutBracket.addView(tvRoundTitle);
 
-            for (String winner : roundWinners) {
-                TextView tvWinner = new TextView(getContext());
-                tvWinner.setText("✓ " + winner);
-                tvWinner.setTextSize(14);
-                tvWinner.setPadding(30, 5, 20, 5);
-                layoutBracket.addView(tvWinner);
+            // Mostrar enfrentamientos
+            for (int matchIndex = 0; matchIndex < round.size(); matchIndex++) {
+                Match match = round.get(matchIndex);
+                View matchView = createMatchView(match, roundIndex, matchIndex);
+                layoutBracket.addView(matchView);
             }
         }
+
+        // Mostrar orden de eliminación
+        updateEliminationOrder();
     }
 
-    private void startNextMatch() {
-        if (currentMatchIndex >= currentRoundMatches.size()) {
-            if (roundWinners.size() == 1) {
-                finishTournament();
-            } else {
-                startNextRound();
-            }
-            return;
-        }
-
-        String match = currentRoundMatches.get(currentMatchIndex);
-        String[] competitors = match.split(" vs ");
-
-        if (competitors.length != 2) {
-            currentMatchIndex++;
-            startNextMatch();
-            return;
-        }
-
-        Competitor comp1 = findCompetitorByFolio(competitors[0].trim());
-        Competitor comp2 = findCompetitorByFolio(competitors[1].trim());
-
-        if (comp1 == null || comp2 == null) {
-            currentMatchIndex++;
-            startNextMatch();
-            return;
-        }
-
-        // Usar el tipo seleccionado para determinar qué diálogo mostrar
-        if (selectedCompetitionType.equals("kata")) {
-            showKataDialog(comp1, comp2);
-        } else {
-            showKumiteDialog(comp1, comp2);
-        }
+    private String getRoundName(int roundIndex, int totalRounds) {
+        int remaining = totalRounds - roundIndex;
+        if (remaining == 1) return "🏆 FINAL";
+        if (remaining == 2) return "🥉 SEMIFINALES";
+        if (remaining == 3) return "CUARTOS DE FINAL";
+        return "RONDA " + (roundIndex + 1);
     }
 
-    private void showKataDialog(Competitor comp1, Competitor comp2) {
+    private View createMatchView(Match match, int roundIndex, int matchIndex) {
+        LinearLayout matchLayout = new LinearLayout(getContext());
+        matchLayout.setOrientation(LinearLayout.VERTICAL);
+        matchLayout.setPadding(16, 12, 16, 12);
+        matchLayout.setBackgroundColor(match.winner != null ? 0xFFE8F5E9 : 0xFFFFFFFF);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(8, 8, 8, 8);
+        matchLayout.setLayoutParams(params);
+
+        if (match.competitor1 == null && match.competitor2 == null) {
+            TextView tvPending = new TextView(getContext());
+            tvPending.setText("⏳ Esperando ganador...");
+            tvPending.setTextSize(14);
+            tvPending.setTextColor(0xFF757575);
+            matchLayout.addView(tvPending);
+            return matchLayout;
+        }
+
+        // Competitor 1
+        TextView tvComp1 = new TextView(getContext());
+        String comp1Text = match.competitor1 != null ?
+                (match.winner == match.competitor1 ? "✓ " : "") + match.competitor1.getName() : "BYE";
+        tvComp1.setText(comp1Text);
+        tvComp1.setTextSize(15);
+        tvComp1.setTextColor(match.winner == match.competitor1 ? 0xFF2E7D32 : 0xFF000000);
+        if (match.winner == match.competitor1) tvComp1.setTextColor(0xFF2E7D32);
+        matchLayout.addView(tvComp1);
+
+        TextView tvVs = new TextView(getContext());
+        tvVs.setText("vs");
+        tvVs.setTextSize(12);
+        tvVs.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        tvVs.setTextColor(0xFF757575);
+        matchLayout.addView(tvVs);
+
+        // Competitor 2
+        TextView tvComp2 = new TextView(getContext());
+        String comp2Text = match.competitor2 != null ?
+                (match.winner == match.competitor2 ? "✓ " : "") + match.competitor2.getName() : "BYE";
+        tvComp2.setText(comp2Text);
+        tvComp2.setTextSize(15);
+        tvComp2.setTextColor(match.winner == match.competitor2 ? 0xFF2E7D32 : 0xFF000000);
+        matchLayout.addView(tvComp2);
+
+        // Click listener solo si el match no tiene ganador
+        if (match.winner == null && match.competitor1 != null && match.competitor2 != null) {
+            matchLayout.setBackgroundColor(0xFFFFF9C4);
+            matchLayout.setOnClickListener(v -> {
+                if (selectedCompetitionType.equals("kumite")) {
+                    showKumiteMatchDialog(match, roundIndex, matchIndex);
+                } else {
+                    showKataMatchDialog(match, roundIndex, matchIndex);
+                }
+            });
+        }
+
+        return matchLayout;
+    }
+
+    private void showKumiteMatchDialog(Match match, int roundIndex, int matchIndex) {
         View dialogView = LayoutInflater.from(getContext())
-                .inflate(R.layout.dialog_kata_judging, null);
+                .inflate(R.layout.dialog_kumite_bracket, null);
 
-        TextView tvCompetitor1 = dialogView.findViewById(R.id.tv_kata_competitor1);
-        TextView tvCompetitor2 = dialogView.findViewById(R.id.tv_kata_competitor2);
+        TextView tvComp1 = dialogView.findViewById(R.id.tv_kumite_comp1);
+        TextView tvComp2 = dialogView.findViewById(R.id.tv_kumite_comp2);
+        TextView tvScore1 = dialogView.findViewById(R.id.tv_kumite_score1);
+        TextView tvScore2 = dialogView.findViewById(R.id.tv_kumite_score2);
+        TextView tvTimer = dialogView.findViewById(R.id.tv_kumite_timer);
+
+        Button btnIppon1 = dialogView.findViewById(R.id.btn_ippon1);
+        Button btnWazari1 = dialogView.findViewById(R.id.btn_wazari1);
+        Button btnYuko1 = dialogView.findViewById(R.id.btn_yuko1);
+        CheckBox cbFoul1_1 = dialogView.findViewById(R.id.cb_foul1_1);
+        CheckBox cbFoul1_2 = dialogView.findViewById(R.id.cb_foul1_2);
+        CheckBox cbFoul1_3 = dialogView.findViewById(R.id.cb_foul1_3);
+        CheckBox cbFoul1_4 = dialogView.findViewById(R.id.cb_foul1_4);
+
+        Button btnIppon2 = dialogView.findViewById(R.id.btn_ippon2);
+        Button btnWazari2 = dialogView.findViewById(R.id.btn_wazari2);
+        Button btnYuko2 = dialogView.findViewById(R.id.btn_yuko2);
+        CheckBox cbFoul2_1 = dialogView.findViewById(R.id.cb_foul2_1);
+        CheckBox cbFoul2_2 = dialogView.findViewById(R.id.cb_foul2_2);
+        CheckBox cbFoul2_3 = dialogView.findViewById(R.id.cb_foul2_3);
+        CheckBox cbFoul2_4 = dialogView.findViewById(R.id.cb_foul2_4);
+
+        Button btnStartStop = dialogView.findViewById(R.id.btn_start_stop);
+        Button btnFinish = dialogView.findViewById(R.id.btn_finish_match);
+
+        tvComp1.setText(match.competitor1.getName());
+        tvComp2.setText(match.competitor2.getName());
+
+        final int[] score1 = {0};
+        final int[] score2 = {0};
+        final long[] timeLeft = {120000}; // 2 minutos
+        final boolean[] timerRunning = {false};
+        final Handler handler = new Handler();
+
+        final Runnable timerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (timerRunning[0] && timeLeft[0] > 0) {
+                    timeLeft[0] -= 100;
+                    int minutes = (int) (timeLeft[0] / 60000);
+                    int seconds = (int) ((timeLeft[0] % 60000) / 1000);
+                    tvTimer.setText(String.format("%02d:%02d", minutes, seconds));
+                    handler.postDelayed(this, 100);
+
+                    if (timeLeft[0] <= 0) {
+                        timerRunning[0] = false;
+                    }
+                }
+            }
+        };
+
+        // Botones de puntuación
+        btnIppon1.setOnClickListener(v -> {
+            score1[0] += 3;
+            tvScore1.setText(String.valueOf(score1[0]));
+        });
+
+        btnWazari1.setOnClickListener(v -> {
+            score1[0] += 2;
+            tvScore1.setText(String.valueOf(score1[0]));
+        });
+
+        btnYuko1.setOnClickListener(v -> {
+            score1[0] += 1;
+            tvScore1.setText(String.valueOf(score1[0]));
+        });
+
+        btnIppon2.setOnClickListener(v -> {
+            score2[0] += 3;
+            tvScore2.setText(String.valueOf(score2[0]));
+        });
+
+        btnWazari2.setOnClickListener(v -> {
+            score2[0] += 2;
+            tvScore2.setText(String.valueOf(score2[0]));
+        });
+
+        btnYuko2.setOnClickListener(v -> {
+            score2[0] += 1;
+            tvScore2.setText(String.valueOf(score2[0]));
+        });
+
+        // Control de faltas
+        CheckBox.OnCheckedChangeListener foulListener1 = (buttonView, isChecked) -> {
+            int fouls = 0;
+            if (cbFoul1_1.isChecked()) fouls++;
+            if (cbFoul1_2.isChecked()) fouls++;
+            if (cbFoul1_3.isChecked()) fouls++;
+            if (cbFoul1_4.isChecked()) fouls++;
+            if (fouls >= 4) {
+                Toast.makeText(getContext(), match.competitor1.getName() + " descalificado!", Toast.LENGTH_SHORT).show();
+            }
+        };
+
+        cbFoul1_1.setOnCheckedChangeListener(foulListener1);
+        cbFoul1_2.setOnCheckedChangeListener(foulListener1);
+        cbFoul1_3.setOnCheckedChangeListener(foulListener1);
+        cbFoul1_4.setOnCheckedChangeListener(foulListener1);
+
+        CheckBox.OnCheckedChangeListener foulListener2 = (buttonView, isChecked) -> {
+            int fouls = 0;
+            if (cbFoul2_1.isChecked()) fouls++;
+            if (cbFoul2_2.isChecked()) fouls++;
+            if (cbFoul2_3.isChecked()) fouls++;
+            if (cbFoul2_4.isChecked()) fouls++;
+            if (fouls >= 4) {
+                Toast.makeText(getContext(), match.competitor2.getName() + " descalificado!", Toast.LENGTH_SHORT).show();
+            }
+        };
+
+        cbFoul2_1.setOnCheckedChangeListener(foulListener2);
+        cbFoul2_2.setOnCheckedChangeListener(foulListener2);
+        cbFoul2_3.setOnCheckedChangeListener(foulListener2);
+        cbFoul2_4.setOnCheckedChangeListener(foulListener2);
+
+        AlertDialog dialog = new AlertDialog.Builder(getContext())
+                .setTitle("Combate Kumite")
+                .setView(dialogView)
+                .setCancelable(false)
+                .create();
+
+        btnStartStop.setOnClickListener(v -> {
+            if (!timerRunning[0]) {
+                timerRunning[0] = true;
+                handler.post(timerRunnable);
+                btnStartStop.setText("Pausar");
+            } else {
+                timerRunning[0] = false;
+                handler.removeCallbacks(timerRunnable);
+                btnStartStop.setText("Reanudar");
+            }
+        });
+
+        btnFinish.setOnClickListener(v -> {
+            handler.removeCallbacks(timerRunnable);
+
+            // Verificar descalificación
+            int fouls1 = (cbFoul1_1.isChecked() ? 1 : 0) + (cbFoul1_2.isChecked() ? 1 : 0) +
+                    (cbFoul1_3.isChecked() ? 1 : 0) + (cbFoul1_4.isChecked() ? 1 : 0);
+            int fouls2 = (cbFoul2_1.isChecked() ? 1 : 0) + (cbFoul2_2.isChecked() ? 1 : 0) +
+                    (cbFoul2_3.isChecked() ? 1 : 0) + (cbFoul2_4.isChecked() ? 1 : 0);
+
+            Competitor winner;
+            Competitor loser;
+
+            if (fouls1 >= 4) {
+                winner = match.competitor2;
+                loser = match.competitor1;
+            } else if (fouls2 >= 4) {
+                winner = match.competitor1;
+                loser = match.competitor2;
+            } else if (score1[0] > score2[0]) {
+                winner = match.competitor1;
+                loser = match.competitor2;
+            } else if (score2[0] > score1[0]) {
+                winner = match.competitor2;
+                loser = match.competitor1;
+            } else {
+                Toast.makeText(getContext(), "Empate - Realice desempate", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            finishMatch(match, winner, loser, roundIndex, matchIndex);
+            dialog.dismiss();
+        });
+
+        dialog.show();
+    }
+
+    private void showKataMatchDialog(Match match, int roundIndex, int matchIndex) {
+        View dialogView = LayoutInflater.from(getContext())
+                .inflate(R.layout.dialog_kata_bracket, null);
+
+        TextView tvComp1 = dialogView.findViewById(R.id.tv_kata_comp1);
+        TextView tvComp2 = dialogView.findViewById(R.id.tv_kata_comp2);
+        Button btnScore1 = dialogView.findViewById(R.id.btn_score_comp1);
+        Button btnScore2 = dialogView.findViewById(R.id.btn_score_comp2);
         EditText etJudges = dialogView.findViewById(R.id.et_num_judges);
-        Button btnJudgeComp1 = dialogView.findViewById(R.id.btn_judge_comp1);
-        Button btnJudgeComp2 = dialogView.findViewById(R.id.btn_judge_comp2);
 
-        tvCompetitor1.setText(comp1.getName() + " (" + comp1.getFolio() + ")");
-        tvCompetitor2.setText(comp2.getName() + " (" + comp2.getFolio() + ")");
+        tvComp1.setText(match.competitor1.getName());
+        tvComp2.setText(match.competitor2.getName());
+
+        final double[] finalScore1 = {0};
+        final double[] finalScore2 = {0};
 
         AlertDialog dialog = new AlertDialog.Builder(getContext())
                 .setTitle("Competencia de Kata")
@@ -294,57 +514,50 @@ public class StartCompetitionFragment extends Fragment {
                 .setCancelable(false)
                 .create();
 
-        final double[] score1 = {0};
-        final double[] score2 = {0};
-
-        btnJudgeComp1.setOnClickListener(v -> {
-            String numJudgesStr = etJudges.getText().toString().trim();
-            if (numJudgesStr.isEmpty()) {
-                Toast.makeText(getContext(), "Ingrese número de jueces (3, 5 o 7)",
-                        Toast.LENGTH_SHORT).show();
+        btnScore1.setOnClickListener(v -> {
+            String judgesStr = etJudges.getText().toString().trim();
+            if (judgesStr.isEmpty()) {
+                Toast.makeText(getContext(), "Ingrese número de jueces", Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            int numJudges = Integer.parseInt(numJudgesStr);
+            int numJudges = Integer.parseInt(judgesStr);
             if (numJudges != 3 && numJudges != 5 && numJudges != 7) {
-                Toast.makeText(getContext(), "Solo se permiten 3, 5 o 7 jueces",
-                        Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Solo 3, 5 o 7 jueces", Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            showJudgeScoresDialog(comp1, numJudges, score -> {
-                score1[0] = score;
-                btnJudgeComp1.setText("✓ " + String.format("%.2f", score));
-                btnJudgeComp1.setEnabled(false);
+            showJudgeScoresDialog(match.competitor1, numJudges, score -> {
+                finalScore1[0] = score;
+                btnScore1.setText("✓ " + String.format("%.2f", score));
+                btnScore1.setEnabled(false);
 
-                if (score2[0] > 0) {
-                    determineKataWinner(comp1, comp2, score1[0], score2[0], dialog);
+                if (finalScore2[0] > 0) {
+                    determineKataWinner(match, finalScore1[0], finalScore2[0], roundIndex, matchIndex, dialog);
                 }
             });
         });
 
-        btnJudgeComp2.setOnClickListener(v -> {
-            String numJudgesStr = etJudges.getText().toString().trim();
-            if (numJudgesStr.isEmpty()) {
-                Toast.makeText(getContext(), "Ingrese número de jueces (3, 5 o 7)",
-                        Toast.LENGTH_SHORT).show();
+        btnScore2.setOnClickListener(v -> {
+            String judgesStr = etJudges.getText().toString().trim();
+            if (judgesStr.isEmpty()) {
+                Toast.makeText(getContext(), "Ingrese número de jueces", Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            int numJudges = Integer.parseInt(numJudgesStr);
+            int numJudges = Integer.parseInt(judgesStr);
             if (numJudges != 3 && numJudges != 5 && numJudges != 7) {
-                Toast.makeText(getContext(), "Solo se permiten 3, 5 o 7 jueces",
-                        Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Solo 3, 5 o 7 jueces", Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            showJudgeScoresDialog(comp2, numJudges, score -> {
-                score2[0] = score;
-                btnJudgeComp2.setText("✓ " + String.format("%.2f", score));
-                btnJudgeComp2.setEnabled(false);
+            showJudgeScoresDialog(match.competitor2, numJudges, score -> {
+                finalScore2[0] = score;
+                btnScore2.setText("✓ " + String.format("%.2f", score));
+                btnScore2.setEnabled(false);
 
-                if (score1[0] > 0) {
-                    determineKataWinner(comp1, comp2, score1[0], score2[0], dialog);
+                if (finalScore1[0] > 0) {
+                    determineKataWinner(match, finalScore1[0], finalScore2[0], roundIndex, matchIndex, dialog);
                 }
             });
         });
@@ -352,8 +565,7 @@ public class StartCompetitionFragment extends Fragment {
         dialog.show();
     }
 
-    private void showJudgeScoresDialog(Competitor competitor, int numJudges,
-                                       ScoreCallback callback) {
+    private void showJudgeScoresDialog(Competitor competitor, int numJudges, ScoreCallback callback) {
         View dialogView = LayoutInflater.from(getContext())
                 .inflate(R.layout.dialog_judge_scores, null);
 
@@ -382,304 +594,152 @@ public class StartCompetitionFragment extends Fragment {
                     }
 
                     if (scores.size() == numJudges) {
-                        double finalScore = KataJudgeCalculator.calculateKataScore(scores);
+                        double finalScore = calculateKataScore(scores);
                         callback.onScoreCalculated(finalScore);
                     } else {
-                        Toast.makeText(getContext(), "Complete todas las calificaciones",
-                                Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getContext(), "Complete todas las calificaciones", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .show();
     }
 
-    private void determineKataWinner(Competitor comp1, Competitor comp2,
-                                     double score1, double score2, AlertDialog dialog) {
-        String winner;
-        if (score1 > score2) {
-            winner = comp1.getFolio();
-            Toast.makeText(getContext(), comp1.getName() + " gana con " +
-                    String.format("%.2f", score1), Toast.LENGTH_LONG).show();
-        } else if (score2 > score1) {
-            winner = comp2.getFolio();
-            Toast.makeText(getContext(), comp2.getName() + " gana con " +
-                    String.format("%.2f", score2), Toast.LENGTH_LONG).show();
+    private double calculateKataScore(List<Double> scores) {
+        if (scores.size() <= 3) {
+            // Con 3 jueces, promediar todo
+            double sum = 0;
+            for (double score : scores) sum += score;
+            return sum / scores.size();
         } else {
-            Toast.makeText(getContext(), "Empate - se requiere desempate",
-                    Toast.LENGTH_SHORT).show();
+            // Con 5 o 7 jueces, eliminar máximo y mínimo
+            List<Double> sortedScores = new ArrayList<>(scores);
+            Collections.sort(sortedScores);
+            sortedScores.remove(0); // Eliminar mínimo
+            sortedScores.remove(sortedScores.size() - 1); // Eliminar máximo
+
+            double sum = 0;
+            for (double score : sortedScores) sum += score;
+            return sum / sortedScores.size();
+        }
+    }
+
+    private void determineKataWinner(Match match, double score1, double score2,
+                                     int roundIndex, int matchIndex, AlertDialog dialog) {
+        Competitor winner, loser;
+
+        if (score1 > score2) {
+            winner = match.competitor1;
+            loser = match.competitor2;
+            Toast.makeText(getContext(), winner.getName() + " gana: " +
+                    String.format("%.2f vs %.2f", score1, score2), Toast.LENGTH_LONG).show();
+        } else if (score2 > score1) {
+            winner = match.competitor2;
+            loser = match.competitor1;
+            Toast.makeText(getContext(), winner.getName() + " gana: " +
+                    String.format("%.2f vs %.2f", score2, score1), Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(getContext(), "Empate - Realice desempate", Toast.LENGTH_SHORT).show();
             dialog.dismiss();
-            showKataDialog(comp1, comp2);
+            showKataMatchDialog(match, roundIndex, matchIndex);
             return;
         }
 
-        roundWinners.add(winner);
-        bracketManager.advanceWinner(winner, currentRoundMatches.get(currentMatchIndex));
-        currentMatchIndex++;
+        finishMatch(match, winner, loser, roundIndex, matchIndex);
         dialog.dismiss();
-        displayBracket();
-        startNextMatch();
     }
 
-    private void showKumiteDialog(Competitor comp1, Competitor comp2) {
-        View dialogView = LayoutInflater.from(getContext())
-                .inflate(R.layout.dialog_kumite_match, null);
+    private void finishMatch(Match match, Competitor winner, Competitor loser,
+                             int roundIndex, int matchIndex) {
+        match.winner = winner;
 
-        TextView tvComp1Name = dialogView.findViewById(R.id.tv_kumite_comp1_name);
-        TextView tvComp2Name = dialogView.findViewById(R.id.tv_kumite_comp2_name);
-        TextView tvComp1Score = dialogView.findViewById(R.id.tv_kumite_comp1_score);
-        TextView tvComp2Score = dialogView.findViewById(R.id.tv_kumite_comp2_score);
-        TextView tvTimer = dialogView.findViewById(R.id.tv_kumite_timer);
+        // Agregar perdedor al orden de eliminación
+        eliminationOrder.add(0, loser.getName() + " (" + loser.getFolio() + ")");
 
-        Button btnComp1Ippon = dialogView.findViewById(R.id.btn_comp1_ippon);
-        Button btnComp1Wazari = dialogView.findViewById(R.id.btn_comp1_wazari);
-        Button btnComp1Yuko = dialogView.findViewById(R.id.btn_comp1_yuko);
-        Button btnComp1Foul = dialogView.findViewById(R.id.btn_comp1_foul);
+        // Avanzar ganador a la siguiente ronda
+        if (roundIndex + 1 < bracket.size()) {
+            int nextMatchIndex = matchIndex / 2;
+            Match nextMatch = bracket.get(roundIndex + 1).get(nextMatchIndex);
 
-        Button btnComp2Ippon = dialogView.findViewById(R.id.btn_comp2_ippon);
-        Button btnComp2Wazari = dialogView.findViewById(R.id.btn_comp2_wazari);
-        Button btnComp2Yuko = dialogView.findViewById(R.id.btn_comp2_yuko);
-        Button btnComp2Foul = dialogView.findViewById(R.id.btn_comp2_foul);
-
-        Button btnStartStop = dialogView.findViewById(R.id.btn_start_stop_timer);
-        Button btnAdd5Sec = dialogView.findViewById(R.id.btn_add_5_sec);
-        Button btnSubtract5Sec = dialogView.findViewById(R.id.btn_subtract_5_sec);
-        Button btnFinish = dialogView.findViewById(R.id.btn_finish_match);
-
-        EditText etMatchTime = dialogView.findViewById(R.id.et_match_time);
-        EditText etScoreLimit = dialogView.findViewById(R.id.et_score_limit);
-
-        tvComp1Name.setText(comp1.getName());
-        tvComp2Name.setText(comp2.getName());
-
-        final int[] score1 = {0};
-        final int[] score2 = {0};
-        final int[] fouls1 = {0};
-        final int[] fouls2 = {0};
-        final long[] timeLeft = {120000};
-        final boolean[] timerRunning = {false};
-        final Handler handler = new Handler();
-
-        AlertDialog kumiteDialog = new AlertDialog.Builder(getContext())
-                .setTitle("Combate Kumite")
-                .setView(dialogView)
-                .setCancelable(false)
-                .create();
-
-        final Runnable timerRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (timerRunning[0] && timeLeft[0] > 0) {
-                    timeLeft[0] -= 1000;
-                    int minutes = (int) (timeLeft[0] / 60000);
-                    int seconds = (int) ((timeLeft[0] % 60000) / 1000);
-                    tvTimer.setText(String.format("%02d:%02d", minutes, seconds));
-                    handler.postDelayed(this, 1000);
-
-                    if (timeLeft[0] <= 0) {
-                        timerRunning[0] = false;
-                        checkKumiteWinner(comp1, comp2, score1[0], score2[0],
-                                fouls1[0], fouls2[0], kumiteDialog);
-                    }
-                }
-            }
-        };
-
-        btnStartStop.setOnClickListener(v -> {
-            if (!timerRunning[0]) {
-                String timeStr = etMatchTime.getText().toString().trim();
-                if (!timeStr.isEmpty() && timeLeft[0] == 120000) {
-                    timeLeft[0] = Integer.parseInt(timeStr) * 1000;
-                }
-                timerRunning[0] = true;
-                handler.post(timerRunnable);
-                btnStartStop.setText("Pausar");
+            if (matchIndex % 2 == 0) {
+                nextMatch.competitor1 = winner;
             } else {
-                timerRunning[0] = false;
-                handler.removeCallbacks(timerRunnable);
-                btnStartStop.setText("Reanudar");
-            }
-        });
-
-        btnAdd5Sec.setOnClickListener(v -> {
-            timeLeft[0] += 5000;
-            int minutes = (int) (timeLeft[0] / 60000);
-            int seconds = (int) ((timeLeft[0] % 60000) / 1000);
-            tvTimer.setText(String.format("%02d:%02d", minutes, seconds));
-        });
-
-        btnSubtract5Sec.setOnClickListener(v -> {
-            timeLeft[0] -= 5000;
-            if (timeLeft[0] < 0) timeLeft[0] = 0;
-            int minutes = (int) (timeLeft[0] / 60000);
-            int seconds = (int) ((timeLeft[0] % 60000) / 1000);
-            tvTimer.setText(String.format("%02d:%02d", minutes, seconds));
-        });
-
-        btnComp1Ippon.setOnClickListener(v -> {
-            score1[0] += 3;
-            tvComp1Score.setText(String.valueOf(score1[0]));
-            checkScoreLimit(etScoreLimit, score1[0], score2[0], comp1, comp2,
-                    fouls1[0], fouls2[0], kumiteDialog, handler, timerRunnable);
-        });
-
-        btnComp1Wazari.setOnClickListener(v -> {
-            score1[0] += 2;
-            tvComp1Score.setText(String.valueOf(score1[0]));
-            checkScoreLimit(etScoreLimit, score1[0], score2[0], comp1, comp2,
-                    fouls1[0], fouls2[0], kumiteDialog, handler, timerRunnable);
-        });
-
-        btnComp1Yuko.setOnClickListener(v -> {
-            score1[0] += 1;
-            tvComp1Score.setText(String.valueOf(score1[0]));
-            checkScoreLimit(etScoreLimit, score1[0], score2[0], comp1, comp2,
-                    fouls1[0], fouls2[0], kumiteDialog, handler, timerRunnable);
-        });
-
-        btnComp1Foul.setOnClickListener(v -> {
-            fouls1[0]++;
-            if (fouls1[0] >= 4) {
-                endKumiteMatch(comp2.getFolio(), comp2.getName() + " gana por descalificación",
-                        kumiteDialog, handler, timerRunnable);
-            }
-        });
-
-        btnComp2Ippon.setOnClickListener(v -> {
-            score2[0] += 3;
-            tvComp2Score.setText(String.valueOf(score2[0]));
-            checkScoreLimit(etScoreLimit, score1[0], score2[0], comp1, comp2,
-                    fouls1[0], fouls2[0], kumiteDialog, handler, timerRunnable);
-        });
-
-        btnComp2Wazari.setOnClickListener(v -> {
-            score2[0] += 2;
-            tvComp2Score.setText(String.valueOf(score2[0]));
-            checkScoreLimit(etScoreLimit, score1[0], score2[0], comp1, comp2,
-                    fouls1[0], fouls2[0], kumiteDialog, handler, timerRunnable);
-        });
-
-        btnComp2Yuko.setOnClickListener(v -> {
-            score2[0] += 1;
-            tvComp2Score.setText(String.valueOf(score2[0]));
-            checkScoreLimit(etScoreLimit, score1[0], score2[0], comp1, comp2,
-                    fouls1[0], fouls2[0], kumiteDialog, handler, timerRunnable);
-        });
-
-        btnComp2Foul.setOnClickListener(v -> {
-            fouls2[0]++;
-            if (fouls2[0] >= 4) {
-                endKumiteMatch(comp1.getFolio(), comp1.getName() + " gana por descalificación",
-                        kumiteDialog, handler, timerRunnable);
-            }
-        });
-
-        btnFinish.setOnClickListener(v -> {
-            timerRunning[0] = false;
-            handler.removeCallbacks(timerRunnable);
-            checkKumiteWinner(comp1, comp2, score1[0], score2[0], fouls1[0], fouls2[0],
-                    kumiteDialog);
-        });
-
-        kumiteDialog.show();
-    }
-
-    private void checkScoreLimit(EditText etScoreLimit, int score1, int score2,
-                                 Competitor comp1, Competitor comp2,
-                                 int fouls1, int fouls2, AlertDialog dialog,
-                                 Handler handler, Runnable timerRunnable) {
-        String limitStr = etScoreLimit.getText().toString().trim();
-        if (!limitStr.isEmpty()) {
-            int limit = Integer.parseInt(limitStr);
-            if (score1 >= limit || score2 >= limit) {
-                handler.removeCallbacks(timerRunnable);
-                checkKumiteWinner(comp1, comp2, score1, score2, fouls1, fouls2, dialog);
+                nextMatch.competitor2 = winner;
             }
         }
-    }
 
-    private void checkKumiteWinner(Competitor comp1, Competitor comp2,
-                                   int score1, int score2, int fouls1, int fouls2,
-                                   AlertDialog dialog) {
-        if (score1 > score2) {
-            endKumiteMatch(comp1.getFolio(), comp1.getName() + " gana " + score1 + "-" + score2,
-                    dialog, null, null);
-        } else if (score2 > score1) {
-            endKumiteMatch(comp2.getFolio(), comp2.getName() + " gana " + score2 + "-" + score1,
-                    dialog, null, null);
+        // Verificar si es la final
+        if (roundIndex == bracket.size() - 1) {
+            finishTournament(winner, loser);
         } else {
-            Toast.makeText(getContext(), "Empate - Segundo enfrentamiento",
-                    Toast.LENGTH_LONG).show();
-            dialog.dismiss();
-            showKumiteDialog(comp1, comp2);
+            displayBracket();
         }
     }
 
-    private void endKumiteMatch(String winnerFolio, String message, AlertDialog dialog,
-                                Handler handler, Runnable timerRunnable) {
-        if (handler != null && timerRunnable != null) {
-            handler.removeCallbacks(timerRunnable);
+    private void finishTournament(Competitor champion, Competitor runnerUp) {
+        // El orden ya tiene a todos los eliminados
+        // Agregar subcampeón y campeón
+        eliminationOrder.add(0, "🥈 2do Lugar: " + runnerUp.getName() + " (" + runnerUp.getFolio() + ")");
+        eliminationOrder.add(0, "🥇 1er Lugar (CAMPEÓN): " + champion.getName() + " (" + champion.getFolio() + ")");
+
+        // Determinar tercer lugar (último eliminado antes de la final)
+        String thirdPlace = null;
+        if (eliminationOrder.size() > 2) {
+            thirdPlace = eliminationOrder.get(2);
         }
 
-        Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
-        roundWinners.add(winnerFolio);
-        bracketManager.advanceWinner(winnerFolio, currentRoundMatches.get(currentMatchIndex));
-        currentMatchIndex++;
-
-        dialog.dismiss();
-        displayBracket();
-        startNextMatch();
-    }
-
-    private void startNextRound() {
-        bracketManager.nextRound();
-        currentRoundMatches = bracketManager.getCurrentRoundMatches();
-        currentMatchIndex = 0;
-
-        List<String> previousWinners = new ArrayList<>(roundWinners);
-        roundWinners.clear();
-
-        participants.clear();
-        for (String folio : previousWinners) {
-            Competitor comp = findCompetitorByFolio(folio);
-            if (comp != null) participants.add(comp);
-        }
-
-        displayBracket();
-        startNextMatch();
-    }
-
-    private void finishTournament() {
-        String champion = roundWinners.get(0);
-
-        String secondPlace = participants.size() > 1 ? participants.get(1).getFolio() : null;
-        String thirdPlace = participants.size() > 2 ? participants.get(2).getFolio() : null;
-
+        // Actualizar competencia en base de datos
         currentCompetition.setStatus("COMPLETED");
-        currentCompetition.setFirstPlace(champion);
-        currentCompetition.setSecondPlace(secondPlace);
-        currentCompetition.setThirdPlace(thirdPlace);
+        currentCompetition.setFirstPlace(champion.getFolio());
+        currentCompetition.setSecondPlace(runnerUp.getFolio());
+        if (thirdPlace != null && thirdPlace.contains("(")) {
+            String thirdFolio = thirdPlace.substring(thirdPlace.indexOf("(") + 1, thirdPlace.indexOf(")"));
+            currentCompetition.setThirdPlace(thirdFolio);
+        }
 
         dbHelper.updateCompetition(currentCompetition);
 
-        Competitor winner = findCompetitorByFolio(champion);
-        String winnerName = winner != null ? winner.getName() : champion;
+        // Mostrar resultados finales
+        StringBuilder results = new StringBuilder();
+        results.append("🏆 COMPETENCIA FINALIZADA 🏆\n\n");
+        results.append("Categoría: ").append(currentCategory.getFolio()).append("\n");
+        results.append("Tipo: ").append(selectedCompetitionType.equals("kata") ? "Kata" : "Kumite").append("\n\n");
+        results.append("RESULTADOS FINALES:\n\n");
+
+        for (int i = 0; i < Math.min(3, eliminationOrder.size()); i++) {
+            results.append(eliminationOrder.get(i)).append("\n");
+        }
 
         new AlertDialog.Builder(getContext())
                 .setTitle("¡Competencia Finalizada!")
-                .setMessage("Campeón: " + winnerName + "\n\nLos resultados han sido guardados.")
+                .setMessage(results.toString())
                 .setPositiveButton("Aceptar", (d, w) -> {
+                    // Limpiar vista
                     layoutBracket.removeAllViews();
                     tvCategoryInfo.setVisibility(View.GONE);
+                    tvEliminationOrder.setVisibility(View.GONE);
                     etCategoryFolio.setText("");
                     selectedCompetitionType = null;
+                    bracket = null;
+                    eliminationOrder.clear();
                 })
+                .setCancelable(false)
                 .show();
     }
 
-    private Competitor findCompetitorByFolio(String folio) {
-        for (Competitor c : participants) {
-            if (c.getFolio().equals(folio)) return c;
+    private void updateEliminationOrder() {
+        if (eliminationOrder.isEmpty()) {
+            tvEliminationOrder.setVisibility(View.GONE);
+            return;
         }
-        return null;
+
+        StringBuilder orderText = new StringBuilder();
+        orderText.append("Resultados actuales:\n\n");
+
+        for (int i = 0; i < eliminationOrder.size(); i++) {
+            orderText.append((i + 1)).append(". ").append(eliminationOrder.get(i)).append("\n");
+        }
+
+        tvEliminationOrder.setText(orderText.toString());
+        tvEliminationOrder.setVisibility(View.VISIBLE);
     }
 
     interface ScoreCallback {
