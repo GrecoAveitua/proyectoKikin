@@ -30,10 +30,8 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 public class StartCompetitionFragment extends Fragment {
 
@@ -74,20 +72,50 @@ public class StartCompetitionFragment extends Fragment {
     }
 
     private void startCompetition() {
-        String folio = etCategoryFolio.getText().toString().trim();
+        String searchTerm = etCategoryFolio.getText().toString().trim();
 
-        if (folio.isEmpty()) {
+        if (searchTerm.isEmpty()) {
             Toast.makeText(getContext(), "Ingrese el folio de la categoría", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        currentCategory = dbHelper.getCategory(folio);
+        // Buscar categorías que coincidan
+        List<Category> results = dbHelper.searchCategoriesByFolio(searchTerm);
 
-        if (currentCategory == null) {
-            Toast.makeText(getContext(), "Categoría no encontrada", Toast.LENGTH_SHORT).show();
+        if (results.isEmpty()) {
+            Toast.makeText(getContext(), "No se encontraron categorías", Toast.LENGTH_SHORT).show();
             return;
         }
 
+        if (results.size() == 1) {
+            currentCategory = results.get(0);
+            continueWithCategory();
+        } else {
+            showCategorySelectionDialog(results);
+        }
+    }
+
+    private void showCategorySelectionDialog(List<Category> categories) {
+        String[] options = new String[categories.size()];
+        for (int i = 0; i < categories.size(); i++) {
+            Category c = categories.get(i);
+            String type = c.getType().equals("kata") ? "Kata" :
+                    (c.getType().equals("kumite") ? "Kumite" : "Kata y Kumite");
+            options[i] = c.getFolio() + " - " + c.getBelt() + " (" +
+                    c.getMinAge() + "-" + c.getMaxAge() + " años, " + type + ")";
+        }
+
+        new AlertDialog.Builder(getContext())
+                .setTitle("Seleccione una categoría")
+                .setItems(options, (dialog, which) -> {
+                    currentCategory = categories.get(which);
+                    continueWithCategory();
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void continueWithCategory() {
         // Si la categoría es "both", preguntar qué tipo de competencia
         if (currentCategory.getType().equals("both")) {
             showCompetitionTypeDialog();
@@ -127,12 +155,12 @@ public class StartCompetitionFragment extends Fragment {
         loadParticipants();
 
         if (participants.isEmpty()) {
-            Toast.makeText(getContext(), "No hay competidores elegibles", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "No hay competidores elegibles para esta categoría", Toast.LENGTH_LONG).show();
             return;
         }
 
         if (participants.size() < 2) {
-            Toast.makeText(getContext(), "Se requieren al menos 2 competidores", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Se requieren al menos 2 competidores para iniciar la competencia", Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -143,7 +171,10 @@ public class StartCompetitionFragment extends Fragment {
         // Crear registro de competencia
         String date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
         currentCompetition = new Competition(0, currentCategory.getFolio(), date, "IN_PROGRESS", null, null, null);
-        dbHelper.insertCompetition(currentCompetition);
+        long competitionId = dbHelper.insertCompetition(currentCompetition);
+        currentCompetition.setId((int) competitionId);
+
+        Toast.makeText(getContext(), "Competencia iniciada con " + participants.size() + " participantes", Toast.LENGTH_SHORT).show();
     }
 
     private void loadParticipants() {
@@ -151,15 +182,21 @@ public class StartCompetitionFragment extends Fragment {
         List<Competitor> allCompetitors = dbHelper.getAllCompetitors("age", true);
 
         for (Competitor competitor : allCompetitors) {
-            if (competitor.getBelt().equals(currentCategory.getBelt()) &&
-                    competitor.getAge() >= currentCategory.getMinAge() &&
-                    competitor.getAge() <= currentCategory.getMaxAge()) {
+            // Verificar cinturón y edad
+            if (!competitor.getBelt().equals(currentCategory.getBelt())) {
+                continue;
+            }
 
-                if (selectedCompetitionType.equals("kata") && competitor.isParticipateKata()) {
-                    participants.add(competitor);
-                } else if (selectedCompetitionType.equals("kumite") && competitor.isParticipateKumite()) {
-                    participants.add(competitor);
-                }
+            if (competitor.getAge() < currentCategory.getMinAge() ||
+                    competitor.getAge() > currentCategory.getMaxAge()) {
+                continue;
+            }
+
+            // Verificar tipo de participación
+            if (selectedCompetitionType.equals("kata") && competitor.isParticipateKata()) {
+                participants.add(competitor);
+            } else if (selectedCompetitionType.equals("kumite") && competitor.isParticipateKumite()) {
+                participants.add(competitor);
             }
         }
 
@@ -285,7 +322,6 @@ public class StartCompetitionFragment extends Fragment {
         tvComp1.setText(comp1Text);
         tvComp1.setTextSize(15);
         tvComp1.setTextColor(match.winner == match.competitor1 ? 0xFF2E7D32 : 0xFF000000);
-        if (match.winner == match.competitor1) tvComp1.setTextColor(0xFF2E7D32);
         matchLayout.addView(tvComp1);
 
         TextView tvVs = new TextView(getContext());
@@ -364,7 +400,7 @@ public class StartCompetitionFragment extends Fragment {
                     timeLeft[0] -= 100;
                     int minutes = (int) (timeLeft[0] / 60000);
                     int seconds = (int) ((timeLeft[0] % 60000) / 1000);
-                    tvTimer.setText(String.format("%02d:%02d", minutes, seconds));
+                    tvTimer.setText(String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds));
                     handler.postDelayed(this, 100);
 
                     if (timeLeft[0] <= 0) {
@@ -529,7 +565,7 @@ public class StartCompetitionFragment extends Fragment {
 
             showJudgeScoresDialog(match.competitor1, numJudges, score -> {
                 finalScore1[0] = score;
-                btnScore1.setText("✓ " + String.format("%.2f", score));
+                btnScore1.setText("✓ " + String.format(Locale.getDefault(), "%.2f", score));
                 btnScore1.setEnabled(false);
 
                 if (finalScore2[0] > 0) {
@@ -553,7 +589,7 @@ public class StartCompetitionFragment extends Fragment {
 
             showJudgeScoresDialog(match.competitor2, numJudges, score -> {
                 finalScore2[0] = score;
-                btnScore2.setText("✓ " + String.format("%.2f", score));
+                btnScore2.setText("✓ " + String.format(Locale.getDefault(), "%.2f", score));
                 btnScore2.setEnabled(false);
 
                 if (finalScore1[0] > 0) {
@@ -630,12 +666,12 @@ public class StartCompetitionFragment extends Fragment {
             winner = match.competitor1;
             loser = match.competitor2;
             Toast.makeText(getContext(), winner.getName() + " gana: " +
-                    String.format("%.2f vs %.2f", score1, score2), Toast.LENGTH_LONG).show();
+                    String.format(Locale.getDefault(), "%.2f vs %.2f", score1, score2), Toast.LENGTH_LONG).show();
         } else if (score2 > score1) {
             winner = match.competitor2;
             loser = match.competitor1;
             Toast.makeText(getContext(), winner.getName() + " gana: " +
-                    String.format("%.2f vs %.2f", score2, score1), Toast.LENGTH_LONG).show();
+                    String.format(Locale.getDefault(), "%.2f vs %.2f", score2, score1), Toast.LENGTH_LONG).show();
         } else {
             Toast.makeText(getContext(), "Empate - Realice desempate", Toast.LENGTH_SHORT).show();
             dialog.dismiss();
@@ -740,6 +776,14 @@ public class StartCompetitionFragment extends Fragment {
 
         tvEliminationOrder.setText(orderText.toString());
         tvEliminationOrder.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (dbHelper != null) {
+            dbHelper.close();
+        }
     }
 
     interface ScoreCallback {
