@@ -121,7 +121,12 @@ public class CategoriesFragment extends Fragment {
                     }
 
                     RadioButton rbSelected = dialogView.findViewById(selectedId);
-                    String type = rbSelected.getText().toString().toLowerCase();
+                    String type = "";
+                    if (selectedId == R.id.rb_kata) {
+                        type = "kata";
+                    } else if (selectedId == R.id.rb_kumite) {
+                        type = "kumite";
+                    }
 
                     String folio = Category.generateFolio(belt, minAge, maxAge, type);
                     Category category = new Category(folio, belt, minAge, maxAge, type);
@@ -243,9 +248,16 @@ public class CategoriesFragment extends Fragment {
             int maxAge = Integer.parseInt(etMaxAge.getText().toString().trim());
 
             int selectedId = rgType.getCheckedRadioButtonId();
-            RadioButton rbSelected = dialogView.findViewById(selectedId);
-            String type = rbSelected.getText().toString().toLowerCase();
-            if (type.equals("ambos")) type = "both";
+            String type;
+            if (selectedId == R.id.rb_kata) {
+                type = "kata";
+            } else if (selectedId == R.id.rb_kumite) {
+                type = "kumite";
+            } else {
+                Toast.makeText(getContext(), "Debe seleccionar tipo de competencia",
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
 
             category.setBelt(belt);
             category.setMinAge(minAge);
