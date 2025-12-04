@@ -9,10 +9,10 @@
     android:theme="@style/ThemeOverlay.AppCompat.Dark">
 
     <ImageView
-        android:layout_width="80dp"
-        android:layout_height="80dp"
-        android:src="@drawable/ic_karate_logo"
-        android:contentDescription="@string/app_name" />
+        android:id="@+id/imagencita"
+        android:src="@drawable/logo2"
+        android:layout_width="75dp"
+        android:layout_height="75dp"/>
 
     <TextView
         android:layout_width="match_parent"
