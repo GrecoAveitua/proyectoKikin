@@ -61,18 +61,4 @@
 
     </RadioGroup>
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Cantidad de Jueces"
-        android:textStyle="bold"
-        android:layout_marginTop="4dp"/>
-
-    <Spinner
-        android:id="@+id/sp_category_judges"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="12dp" />
-
 </LinearLayout>

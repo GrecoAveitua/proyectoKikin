@@ -64,7 +64,7 @@ public class CategoriesFragment extends Fragment {
                 .inflate(R.layout.dialog_add_category, null);
 
         Spinner spBelt = dialogView.findViewById(R.id.sp_category_belt);
-        Spinner spjUDGE = dialogView.findViewById(R.id.sp_category_judges);
+        // ELIMINAR: Spinner spjUDGE = dialogView.findViewById(R.id.sp_category_judges);
         EditText etMinAge = dialogView.findViewById(R.id.et_min_age);
         EditText etMaxAge = dialogView.findViewById(R.id.et_max_age);
         RadioGroup rgType = dialogView.findViewById(R.id.rg_category_type);
@@ -88,24 +88,12 @@ public class CategoriesFragment extends Fragment {
 
         spBelt.setAdapter(beltAdapter);
 
-        String[] judges = {"1", "3", "5", "7"};
-
-        ArrayAdapter<String> judgesAdapter = new ArrayAdapter<>(
-                requireContext(),
-                android.R.layout.simple_spinner_item,
-                judges
-        );
-        judgesAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-
-        spjUDGE.setAdapter(judgesAdapter);
-
-
         new AlertDialog.Builder(getContext())
                 .setTitle("Crear Categoría")
                 .setView(dialogView)
                 .setPositiveButton("Crear", (dialog, which) -> {
                     String belt = spBelt.getSelectedItem().toString();
-                    String judge = spjUDGE.getSelectedItem().toString();
+                    // ELIMINAR: String judge = spjUDGE.getSelectedItem().toString();
                     String minAgeStr = etMinAge.getText().toString().trim();
                     String maxAgeStr = etMaxAge.getText().toString().trim();
 
@@ -125,6 +113,13 @@ public class CategoriesFragment extends Fragment {
                     }
 
                     int selectedId = rgType.getCheckedRadioButtonId();
+                    // AGREGAR VALIDACIÓN:
+                    if (selectedId == -1) {
+                        Toast.makeText(getContext(), "Debe seleccionar tipo de competencia",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
                     RadioButton rbSelected = dialogView.findViewById(selectedId);
                     String type = rbSelected.getText().toString().toLowerCase();
 

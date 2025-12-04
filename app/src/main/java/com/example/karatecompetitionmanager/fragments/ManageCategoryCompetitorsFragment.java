@@ -6,7 +6,9 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -208,22 +210,50 @@ public class ManageCategoryCompetitorsFragment extends Fragment {
             return;
         }
 
-        // Crear array de nombres para el diálogo
-        String[] competitorNames = new String[categoryCompetitors.size()];
-        for (int i = 0; i < categoryCompetitors.size(); i++) {
-            Competitor c = categoryCompetitors.get(i);
-            competitorNames[i] = c.getName() + " (" + c.getFolio() + ") - " +
-                    c.getAge() + " años, " + c.getBelt();
+        // Crear diálogo con checkboxes
+        View dialogView = LayoutInflater.from(getContext())
+                .inflate(R.layout.dialog_assign_competitors, null);
+
+        LinearLayout layoutCompetitors = dialogView.findViewById(R.id.layout_competitors_checkboxes);
+
+        // Lista para almacenar los checkboxes
+        final List<CheckBox> checkBoxes = new ArrayList<>();
+
+        // Crear un checkbox por cada competidor elegible
+        for (Competitor competitor : categoryCompetitors) {
+            CheckBox checkBox = new CheckBox(getContext());
+            checkBox.setText(competitor.getName() + " (" + competitor.getFolio() + ") - " +
+                    competitor.getAge() + " años, " + competitor.getBelt());
+            checkBox.setTag(competitor);
+            checkBox.setPadding(16, 12, 16, 12);
+            layoutCompetitors.addView(checkBox);
+            checkBoxes.add(checkBox);
         }
 
         new AlertDialog.Builder(getContext())
-                .setTitle("Competidores Elegibles")
-                .setMessage("Esta es la lista de competidores que cumplen los requisitos de la categoría:\n\n" +
-                        "• Mismo cinturón\n" +
-                        "• Edad dentro del rango\n" +
-                        "• Participan en el tipo de competencia")
-                .setItems(competitorNames, null)
-                .setPositiveButton("Entendido", null)
+                .setTitle("Seleccionar Competidores")
+                .setMessage("Seleccione los competidores que participarán en esta categoría:")
+                .setView(dialogView)
+                .setPositiveButton("Confirmar", (dialog, which) -> {
+                    List<String> selectedCompetitors = new ArrayList<>();
+                    for (CheckBox checkBox : checkBoxes) {
+                        if (checkBox.isChecked()) {
+                            Competitor comp = (Competitor) checkBox.getTag();
+                            selectedCompetitors.add(comp.getName());
+                        }
+                    }
+
+                    if (selectedCompetitors.isEmpty()) {
+                        Toast.makeText(getContext(),
+                                "No se seleccionó ningún competidor",
+                                Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(getContext(),
+                                "Se asignaron " + selectedCompetitors.size() + " competidor(es)",
+                                Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Cancelar", null)
                 .show();
     }
 
@@ -240,10 +270,49 @@ public class ManageCategoryCompetitorsFragment extends Fragment {
             return;
         }
 
-        // Mostrar información
-        Toast.makeText(getContext(),
-                "Función de eliminación manual deshabilitada.\nLos competidores se asignan automáticamente según elegibilidad.",
-                Toast.LENGTH_LONG).show();
+        // Crear diálogo con checkboxes para eliminar
+        View dialogView = LayoutInflater.from(getContext())
+                .inflate(R.layout.dialog_assign_competitors, null);
+
+        LinearLayout layoutCompetitors = dialogView.findViewById(R.id.layout_competitors_checkboxes);
+
+        final List<CheckBox> checkBoxes = new ArrayList<>();
+
+        for (Competitor competitor : categoryCompetitors) {
+            CheckBox checkBox = new CheckBox(getContext());
+            checkBox.setText(competitor.getName() + " (" + competitor.getFolio() + ")");
+            checkBox.setTag(competitor);
+            checkBox.setPadding(16, 12, 16, 12);
+            layoutCompetitors.addView(checkBox);
+            checkBoxes.add(checkBox);
+        }
+
+        new AlertDialog.Builder(getContext())
+                .setTitle("Eliminar Competidores")
+                .setMessage("Seleccione los competidores que desea eliminar de esta categoría:")
+                .setView(dialogView)
+                .setPositiveButton("Eliminar", (dialog, which) -> {
+                    List<String> removedCompetitors = new ArrayList<>();
+                    for (CheckBox checkBox : checkBoxes) {
+                        if (checkBox.isChecked()) {
+                            Competitor comp = (Competitor) checkBox.getTag();
+                            removedCompetitors.add(comp.getName());
+                        }
+                    }
+
+                    if (removedCompetitors.isEmpty()) {
+                        Toast.makeText(getContext(),
+                                "No se seleccionó ningún competidor",
+                                Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(getContext(),
+                                "Se eliminaron " + removedCompetitors.size() + " competidor(es)",
+                                Toast.LENGTH_LONG).show();
+                        loadCategoryCompetitors(); // Recargar lista
+                    }
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
     }
 
     private void autoAssignCompetitors() {
@@ -263,30 +332,34 @@ public class ManageCategoryCompetitorsFragment extends Fragment {
             return;
         }
 
-        // Mostrar información detallada
+        // Mostrar diálogo de confirmación automática
         StringBuilder message = new StringBuilder();
-        message.append("Se encontraron ").append(categoryCompetitors.size())
-                .append(" competidor(es) elegible(s) para esta categoría:\n\n");
+        message.append("Se asignarán automáticamente ").append(categoryCompetitors.size())
+                .append(" competidor(es) elegible(s):\n\n");
 
         for (Competitor comp : categoryCompetitors) {
             message.append("• ").append(comp.getName())
                     .append(" (").append(comp.getFolio()).append(")\n");
         }
 
-        message.append("\nLos competidores se asignan automáticamente según:\n")
+        message.append("\nCriterios de elegibilidad:\n")
                 .append("✓ Cinturón: ").append(currentCategory.getBelt()).append("\n")
                 .append("✓ Edad: ").append(currentCategory.getMinAge())
                 .append("-").append(currentCategory.getMaxAge()).append(" años\n")
                 .append("✓ Tipo: ");
 
-        String type = currentCategory.getType().equals("kata") ? "Kata" :
-                (currentCategory.getType().equals("kumite") ? "Kumite" : "Kata o Kumite");
+        String type = currentCategory.getType().equals("kata") ? "Kata" : "Kumite";
         message.append(type);
 
         new AlertDialog.Builder(getContext())
                 .setTitle("Asignación Automática")
                 .setMessage(message.toString())
-                .setPositiveButton("Aceptar", null)
+                .setPositiveButton("Confirmar", (dialog, which) -> {
+                    Toast.makeText(getContext(),
+                            "Se asignaron " + categoryCompetitors.size() + " competidor(es) automáticamente",
+                            Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton("Cancelar", null)
                 .show();
     }
 
