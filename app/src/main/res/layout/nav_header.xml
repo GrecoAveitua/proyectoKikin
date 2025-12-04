@@ -2,10 +2,10 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="176dp"
-    android:background="?attr/colorPrimary"
     android:gravity="bottom"
     android:orientation="vertical"
     android:padding="16dp"
+    android:background="@drawable/color_nav"
     android:theme="@style/ThemeOverlay.AppCompat.Dark">
 
     <ImageView
@@ -26,7 +26,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Sistema de Gestión"
+        android:text="Gestion System"
         android:textSize="12sp" />
 
 </LinearLayout>
